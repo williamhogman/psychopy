@@ -4,7 +4,7 @@
 from lxml import etree
 import os
 import os.path
-import logging
+from psychopy import logging
 
 class Project(object):
     """ Class representing a PsychoPy coder project """
