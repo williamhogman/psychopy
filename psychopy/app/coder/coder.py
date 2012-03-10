@@ -10,6 +10,7 @@ import psychoParser
 import introspect, py_compile
 from psychopy.app import stdOutRich, dialogs
 from psychopy import logging
+from psychopy.app.coder import project
 
 #advanced prefs (not set in prefs files)
 prefTestSubset = ""
@@ -1072,6 +1073,7 @@ class CoderFrame(wx.Frame):
         self.fileStatusLastChecked = time.time()
         self.fileStatusCheckInterval = 5 * 60 #sec
         self.showingReloadDialog = False
+        self.project = None
 
         if self.appData['winH']==0 or self.appData['winW']==0:#we didn't have the key or the win was minimized/invalid
             self.appData['winH'], self.appData['winW'] =wx.DefaultSize
@@ -1729,6 +1731,15 @@ class CoderFrame(wx.Frame):
             if os.path.isfile(newPath):
                 if newPath.lower().endswith('.psyexp'):
                     self.app.newBuilderFrame(fileName=newPath)
+                elif newPath.lower().endswith(".psyproj"):
+                    if self.project is not None:
+                        pass # TODO: Save changes to the project and its files
+                    self.project = project.Project(newPath)
+                    for f in self.project.coderFiles():
+                        self.setCurrentDoc(f.abspath)
+                        self.setFileModified(False)
+                    self.setCurrentDoc(self.project.mainFile().abspath)
+                        
                 else:
                     self.setCurrentDoc(newPath)
                     self.setFileModified(False)

@@ -14,6 +14,20 @@ class Project(object):
     def gitEnabled(self):
         return "git" in self.meta and self.meta["git"] == "True"
 
+    def coderFiles(self):
+        """ Files to open by default in coder viewer """
+        for f in self.files:
+            if hasattr(f,"open_in_coder") and f.open_in_coder:
+                yield f
+
+    def mainFile(self):
+        """ Returns the first experiment file it finds """
+        for f in self.coderFiles():
+            if hasattr(f,"runnable") and f.runnable:
+                return f
+                
+            
+
     def loadFromXML(self,filename):
         """ Loads an xml file and parses it as project """
         
@@ -82,6 +96,10 @@ class FileNode(object):
     
 class PythonFile(FileNode):
     """ Python source files. These should be OK to open in coder view """
+
+    # Python files should be opened in coder view
+    open_in_coder = True
+    
     def __init__(self,node,folder):
         super(PythonFile,self).__init__(node,folder)
         
