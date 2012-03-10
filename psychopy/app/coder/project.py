@@ -11,7 +11,7 @@ class Project(object):
 
     @property
     def gitEnabled(self):
-        return "git-url" in self.meta
+        return "git" in self.meta and self.meta["git"] == "True"
 
     def loadFromXML(self,filename):
         """ Loads an xml file and parses it as project """
