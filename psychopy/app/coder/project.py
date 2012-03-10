@@ -8,7 +8,8 @@ import logging
 
 class Project(object):
     """ Class representing a PsychoPy coder project """
-
+    def __init__(self,filename):
+        self.loadFromXML(filename)
     @property
     def gitEnabled(self):
         return "git" in self.meta and self.meta["git"] == "True"
