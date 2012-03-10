@@ -39,9 +39,19 @@ class Project(object):
         self.psychopyVersion = root.get("version")
         # If we break backward compat. add checks here
 
-        meta_nodes = root.find("Metadata")
-
+        meta_nodes = root.find("Metadata").findall("Meta")
         self.meta = dict([self._parseMetaElement(node) for node in meta_nodes])
+
+        file_nodes = root.find("Files").findall("File")
+        self.files = list([self._parseFileNode(node,folder) for node in file_nodes])
+
+    def _parseFileNode(self,node,folder):
+        file_type = node.get("type")
+        file_class = _file_nodes.get(file_type)
+        if file_class is None:
+            raise RuntimeError("The file type {} could not be found".format(file_type))
+        return file_class(node,folder)
+        
         
     def _parseMetaElement(self,node):
         """ Parses a single meta element """
@@ -50,4 +60,35 @@ class Project(object):
         return (name,val)
         
                 
-     
+
+
+class FileNode(object):
+    """ base class for filenodes in a project"""
+    def __init__(self,node,folder):
+        self.folder = folder
+        self.path = node.get("path")
+
+    @property
+    def abspath(self):
+        return os.path.abspath(os.path.join(self.folder,self.path))
+
+    def __repr__(self):
+        return self.path
+
+    def open(self,*args,**kwargs):
+        """ Opens the file """
+        return open(self.abspath,*args,**kwargs)
+    
+class PythonFile(FileNode):
+    """ Python source files. These should be OK to open in coder view """
+    def __init__(self,node,folder):
+        super(PythonFile,self).__init__(node,folder)
+        
+class ExperimentFile(PythonFile):
+    """ Runnable coder experiments """
+    def __init__(self,node,folder):
+        self.runnable = True
+        super(ExperimentFile,self).__init__(node,folder)
+
+
+_file_nodes = {"python": PythonFile,"experiment": ExperimentFile}
