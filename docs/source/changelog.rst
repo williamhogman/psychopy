@@ -16,6 +16,17 @@ Changelog
 
 :red:`Changes in red typically indicate things that alter the PsychoPy behaviour in a way that could could break compatibility. Be especially wary of those!`
 
+PsychoPy 1.74
+------------------------------
+
+PsychoPy 1.74.00
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+(https://github.com/psychopy/psychopy)
+
+* ADDED: 'enable escape' option in experiment settings, default is enabled
+* CHANGED: remove python 2.4's version of sha1 digest from info.py (RunTimeInfo); StandAlone versions do not use python 2.4
+
 PsychoPy 1.73
 ------------------------------
 
@@ -26,15 +37,22 @@ PsychoPy 1.73.05
 
 * FIXED: Joystick error when calling :class:`~psychopy.hardware.joystick.Joystick.getHat()` or :class:`~psychopy.hardware.joystick.Joystick.getHats()` (fixed by Gary Lupyan)
 * FIXED: BufferImageStim crashing on some linux boxes (due to bug with checking version of OpenGL) (fixed by Jonas Lindelov)
-* FIXED: fMRI emulator class was providing old-format key events (fixed by Erik Kastman)
-* FIXED: Win.setRecordFrameIntervals(True) was including as a frame interval the time since it was turned off (fixed by Alex Holcombe)
+* FIXED: fMRI emulator class was providing old-format key events (fixed by Erik Kastman and Jeremy)
+* FIXED: Win.setRecordFrameIntervals(True) was including the time since it was turned off as a frame interval (fixed by Alex Holcombe)
+* FIXED: using forceEndtrial from a mouse component in Builder wasn't working (thanks Esteban for the heads-up)
+* FIXED: visual.Circle now respects the edges parameter (fixed by Jonas Lindelov)
+* FIXED: having IPython v0.12 should no longer crash psychopy on startup (Jeremy)
+* FIXED: non-ascii month-name (eg Japanese) from %B is now filtered out to avoid crash when compile a psyexp script (Jeremy)
+* ADDED: support for usb->serial devices under linux (William Hogman)
+* ADDED: option to vertically flip a BufferImageStim upon capture (esp for fMRI-related presentation of text) (Jeremy)
+* ADDED: option to play a sound (simple tone) during fMRI launchScan simulation (Jeremy)
 
 PsychoPy 1.73.04
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 (released Feb 2012)
 
-* CHANGED: Builder scripts now silently convert division from integers to float where necessary. That means 1/3=0.333 whereas previously 1/3=0. This is done simply by adding the line `from __future__ import division` at the top of the script, which people using Coder might want to think about too.
+* :red:`CHANGED: Builder scripts now silently convert division from integers to float where necessary.` That means 1/3=0.333 whereas previously 1/3=0. This is done simply by adding the line `from __future__ import division` at the top of the script, which people using Coder might want to think about too.
 * FIXED: problem with loading .psydat files using misc.fromFile (thanks Becky)
 * FIXED: issue on OSX with updating from 1.70 binaries to 1.73 patch release
 

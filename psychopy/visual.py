@@ -1,7 +1,7 @@
 """To control the screen and visual stimuli for experiments
 """
 # Part of the PsychoPy library
-# Copyright (C) 2011 Jonathan Peirce
+# Copyright (C) 2012 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 import sys, os, platform, time, glob, copy
@@ -358,13 +358,13 @@ class Window:
         see also:
             Window.saveFrameIntervals()
         """
-        
+
         if self.recordFrameIntervals != True and value==True: #was off, and now turning it on
             self.recordFrameIntervalsJustTurnedOn = True
         else:
             self.recordFrameIntervalsJustTurnedOn = False
         self.recordFrameIntervals=value
-        
+
         self.frameClock.reset()
     def saveFrameIntervals(self, fileName=None, clear=True):
         """Save recorded screen frame intervals to disk, as comma-separated values.
@@ -453,7 +453,6 @@ class Window:
 
         if self.winType == "glut": GLUT.glutSwapBuffers()
         elif self.winType =="pyglet":
-            #print "updating pyglet"
             #make sure this is current context
             self.winHandle.switch_to()
 
@@ -538,6 +537,36 @@ class Window:
         """
         self.flip(clearBuffer=True)#clearBuffer was the original behaviour for win.update()
 
+    def multiFlip(self, flips=1, clearBuffer=True):
+        """
+        Flips multiple times while maintaining display constant. Use this method for precise timing.
+
+        :Parameters:
+        
+            flips: number of monitor frames to flip image. Window.multiFlip(flips=1) is equivalent to Window.flip().
+
+            clearBuffer: as in Window.flip(). This is applied to the last flip.
+
+        Example::
+        
+            myStim1.draw()					# Draws myStim1 to buffer
+            myWin.multiFlip(clearBuffer=False, flips=6)	# Show stimulus for 4 frames (90 ms at 60Hz)
+            myStim2.draw()					# Draw myStim2 "on top of" myStim1 (because buffer was not cleared above)
+            myWin.multiFlip(flips=2)		# Show this for 2 frames (30 ms at 60Hz)
+            myWin.multiFlip(flips=3)		# Show blank screen for 3 frames (because buffer was cleared above)
+        """
+        
+        #Sanity checking
+        if flips >= 1 and int(flips) == flips:
+            logging.error("flips argument for multiFlip should be a positive integer")
+        if flips > 1 and self.waitBlanking: 
+            logging.warning("Call to Window.multiFlip() with flips > 1 is unnecessary because Window.waitBlanking=False")
+        
+        #Do the flipping with last flip as special case
+        for frame in range(flips-1): 
+            self.flip(clearBuffer=False)
+        self.flip(clearBuffer=clearBuffer)
+    
     def clearBuffer(self):
         """Clear the back buffer (to which you are currently drawing) without flipping the window.
         Useful if you want to generate movie sequences from the back buffer without actually
@@ -992,7 +1021,7 @@ class Window:
 #        else: _shaders=_shadersPygame
 
         #setup screen color
-        if self.colorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+        if self.colorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
             desiredRGB = (self.rgb+1)/2.0#RGB in range 0:1 and scaled for contrast
         else:
             desiredRGB = self.rgb/255.0
@@ -1080,7 +1109,7 @@ class Window:
 
         status = FB.glCheckFramebufferStatusEXT (FB.GL_FRAMEBUFFER_EXT);
         if status != FB.GL_FRAMEBUFFER_COMPLETE_EXT:
-            print "Error in framebuffer activation"
+            logging.warning("Error in framebuffer activation")
             return
         GL.glDisable(GL.GL_TEXTURE_2D)
 
@@ -1649,7 +1678,7 @@ class DotStim(_BaseVisualStim):
                 GL.glVertexPointer(2, GL.GL_DOUBLE, 0, self._dotsXYRendered.ctypes.data_as(ctypes.POINTER(ctypes.c_double)))
             else:
                 GL.glVertexPointerd(self._dotsXYRendered)
-            if self.colorSpace in ['rgb','dkl','lms']:
+            if self.colorSpace in ['rgb','dkl','lms','hsv']:
                 GL.glColor4f(self.rgb[0]/2.0+0.5, self.rgb[1]/2.0+0.5, self.rgb[2]/2.0+0.5, 1.0)
             else:
                 GL.glColor4f(self.rgb[0]/255.0, self.rgb[1]/255.0, self.rgb[2]/255.0, 1.0)
@@ -2310,7 +2339,7 @@ class PatchStim(_BaseVisualStim):
         GL.glRotatef(-self.ori,0.0,0.0,1.0)
         #the list just does the texture mapping
 
-        if self.colorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+        if self.colorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
             desiredRGB = (self.rgb*self.contrast+1)/2.0#RGB in range 0:1 and scaled for contrast
             if numpy.any(desiredRGB>1.0) or numpy.any(desiredRGB<0):
                 logging.warning('Desired color %s (in RGB 0->1 units) falls outside the monitor gamut. Drawing blue instead'%desiredRGB) #AOH
@@ -2333,7 +2362,6 @@ class PatchStim(_BaseVisualStim):
         stimulus changes. Call it if you change a property manually
         rather than using the .set() command
         """
-        #print 'updating Shaders list'
         self.needUpdate=0
         GL.glNewList(self._listID,GL.GL_COMPILE)
         #setup the shaderprogram
@@ -2402,7 +2430,6 @@ class PatchStim(_BaseVisualStim):
         stimulus changes. Call it if you change a property manually
         rather than using the .set() command
         """
-        #print 'updating No Shaders list'
         self.needUpdate=0
 
         GL.glNewList(self._listID,GL.GL_COMPILE)
@@ -3016,7 +3043,9 @@ class ElementArrayStim:
                  nElements = 100,
                  sizes = 2.0,
                  xys = None,
-                 rgbs = (1.0,1.0,1.0),
+                 rgbs = None,
+                 colors=(1.0,1.0,1.0),
+                 colorSpace='rgb',
                  opacities = 1.0,
                  depths = 0,
                  fieldDepth = 0,
@@ -3060,10 +3089,16 @@ class ElementArrayStim:
                 the xy positions of the elements, relative to the field centre
                 (fieldPos)
 
-            rgbs :
+            colors :
                 specifying the color(s) of the elements.
-                Should be Nx1 (different greys), Nx3 (different colors) or 1x3
-                (for a single color)
+                Should be Nx1 (different intensities), Nx3 (different colors) or 1x3
+                (for a single color).
+
+            colorSpace :
+                The type of color specified is the same as
+                those in other stimuli ('rgb','dkl','lms'...) but note that for
+                this stimulus you cannot currently use text-based colors (e.g. names
+                or hex values)
 
             opacities :
                 the opacity of each element (Nx1 or a single value)
@@ -3123,7 +3158,6 @@ class ElementArrayStim:
         self.nElements = nElements
         #info for each element
         self.sizes = sizes
-        self.rgbs=rgbs
         self.xys= xys
         self.opacities = opacities
         self.oris = oris
@@ -3139,6 +3173,13 @@ class ElementArrayStim:
             raise TypeError('ElementArrayStim requires a pyglet context')
         if not self.win._haveShaders:
             raise Exception("ElementArrayStim requires shaders support and floating point textures")
+
+        self.colorSpace=colorSpace
+        if rgbs!=None:
+            logging.warning("Use of the rgb argument to ElementArrayStim is deprecated. Please use colors and colorSpace args instead")
+            self.setColors(rgbs, colorSpace='rgb')
+        else:
+            self.setColors(colors, colorSpace=colorSpace)
 
         #Deal with input for fieldpos
         if type(fieldPos) in [tuple,list]:
@@ -3162,7 +3203,6 @@ class ElementArrayStim:
         self.setTex(elementTex)
 
         self.setContrs(contrs)
-        self.setRgbs(rgbs)
         self.setOpacities(opacities)#opacities is used by setRgbs, so this needs to be early
         self.setXYs(xys)
         self.setOris(oris)
@@ -3348,31 +3388,66 @@ class ElementArrayStim:
         self.needTexCoordUpdate=True
 
     def setRgbs(self,value,operation=''):
-        """Set the rgb for each element.
-        Should either be:
-
-          - a single value
-          - an Nx1 array/list
-          - an Nx3 array/list
+        """DEPRECATED (as of v1.74.00). Please use setColors() instead
         """
-        #make into an array
-        if type(value) in [int, float, list, tuple]:
-            value = numpy.array(value, dtype=float)
+        self.setColors(value,operation)
+    def setColors(self, color, colorSpace=None, operation=''):
+        """Set the color of the stimulus. See :ref:`colorspaces` for further information
+        about the various ways to specify colors and their various implications.
+
+        :Parameters:
+
+        color :
+            Can be specified in one of many ways.
+
+            You must provide a triplet of values, which refer to the coordinates
+            in one of the :ref:`colorspaces`. If no color space is specified then the color
+            space most recently used for this stimulus is used again.
+
+                myStim.setColor([1.0,-1.0,-1.0], 'rgb')#a red color in rgb space
+                myStim.setColor([0.0,45.0,1.0], 'dkl') #DKL space with elev=0, azimuth=45
+                myStim.setColor([0,0,255], 'rgb255') #a blue stimulus using rgb255 space
+
+            Lastly, a single number can be provided, x, which is equivalent to providing
+            [x,x,x].
+
+                myStim.setColor(255, 'rgb255') #all guns o max
+
+        colorSpace : string or None
+
+            defining which of the :ref:`colorspaces` to use. For strings and hex
+            values this is not needed. If None the default colorSpace for the stimulus is
+            used (defined during initialisation).
+
+        operation : one of '+','-','*','/', or '' for no operation (simply replace value)
+
+            for colors specified as a triplet of values (or single intensity value)
+            the new value will perform this operation on the previous color
+
+                thisStim.setColor([1,1,1],'rgb255','+')#increment all guns by 1 value
+                thisStim.setColor(-1, 'rgb', '*') #multiply the color by -1 (which in this space inverts the contrast)
+                thisStim.setColor([10,0,0], 'dkl', '+')#raise the elevation from the isoluminant plane by 10 deg
+        """
+        _setColor(self,color, colorSpace=colorSpace, operation=operation,
+                    rgbAttrib='rgbs', #or 'fillRGB' etc
+                    colorAttrib='colors',
+                    colorSpaceAttrib='colorSpace')
+
         #check shape
-        if value.shape in [(), (1,),(3,)]:
-            value = numpy.resize(value, [self.nElements,3])
-        elif value.shape in [(self.nElements,), (self.nElements,1)]:
-            value.shape=(self.nElements,1)#set to be 2D
-            value = value.repeat(3,1) #repeat once on dim 1
-        elif value.shape == (self.nElements,3):
+        if self.rgbs.shape in [(), (1,),(3,)]:
+            self.rgbs = numpy.resize(self.rgbs, [self.nElements,3])
+        elif self.rgbs.shape in [(self.nElements,), (self.nElements,1)]:
+            self.rgbs.shape=(self.nElements,1)#set to be 2D
+            self.rgbs = self.rgbs.repeat(3,1) #repeat once on dim 1
+        elif self.rgbs.shape == (self.nElements,3):
             pass#all is good
         else:
             raise ValueError("New value for setRgbs should be either Nx1, Nx3 or a single value")
-        if operation=='':
-            self.rgbs=value
-        else: exec('self.rgbs'+operation+'=value')
 
         self.needColorUpdate=True
+        if self.autoLog:
+            self.win.logOnFlip("Set %s colors=%s colorSpace=%s" %(self.name, self.colors, self.colorSpace),
+                level=logging.EXP,obj=self)
     def setContrs(self,value,operation=''):
         """Set the contrast for each element.
         Should either be:
@@ -3446,9 +3521,9 @@ class ElementArrayStim:
         if self.needVertexUpdate:
             self.updateElementVertices()
         if self.needColorUpdate:
-            self.updataElementColors()
+            self.updateElementColors()
         if self.needTexCoordUpdate:
-            self.updataTextureCoords()
+            self.updateTextureCoords()
 
         #scale the drawing frame and get to centre of field
         GL.glPushMatrix()#push before drawing, pop after
@@ -3550,16 +3625,25 @@ class ElementArrayStim:
         self.needVertexUpdate=False
 
     #----------------------------------------------------------------------
-    def updataElementColors(self):
-        """Create a new array of self._RGBAs"""
+    def updateElementColors(self):
+        """Create a new array of self._RGBAs based on self.rgbs. Not needed by the
+        user (simple call setColors())
 
+        For element arrays the self.rgbs values correspond to one element so
+        this function also converts them to be one for each vertex of each element
+        """
         N=self.nElements
         self._RGBAs=numpy.zeros([N,4],'d')
-        self._RGBAs[:,0:3] = self.rgbs[:,:] * self.contrs[:].reshape([N,1]).repeat(3,1)/2+0.5
+        if self.colorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
+            self._RGBAs[:,0:3] = self.rgbs[:,:] * self.contrs[:].reshape([N,1]).repeat(3,1)/2+0.5
+        else:
+            self._RGBAs[:,0:3] = self.rgbs * self.contrs[:].reshape([N,1]).repeat(3,1)/255.0
         self._RGBAs[:,-1] = self.opacities.reshape([N,])
         self._RGBAs=self._RGBAs.reshape([N,1,4]).repeat(4,1)#repeat for the 4 vertices in the grid
+
         self.needColorUpdate=False
-    def updataTextureCoords(self):
+
+    def updateTextureCoords(self):
         """Create a new array of self._maskCoords"""
 
         N=self.nElements
@@ -4227,7 +4311,7 @@ class TextStim(_BaseVisualStim):
         """
         self.text = value
 
-        if self.colorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+        if self.colorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
             desiredRGB = (self.rgb*self.contrast+1)/2.0#RGB in range 0:1 and scaled for contrast
             if numpy.any(desiredRGB>1.0) or numpy.any(desiredRGB<0):
                 logging.warning('Desired color %s (in RGB 0->1 units) falls outside the monitor gamut. Drawing blue instead'%desiredRGB) #AOH
@@ -4343,7 +4427,7 @@ class TextStim(_BaseVisualStim):
 
         if self._useShaders: #then rgb needs to be set as glColor
             #setup color
-            if self.colorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+            if self.colorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
                 desiredRGB = (self.rgb*self.contrast+1)/2.0#RGB in range 0:1 and scaled for contrast
                 if numpy.any(desiredRGB>1.0) or numpy.any(desiredRGB<0):
                     logging.warning('Desired color %s (in RGB 0->1 units) falls outside the monitor gamut. Drawing blue instead'%desiredRGB) #AOH
@@ -4633,7 +4717,7 @@ class ShapeStim(_BaseVisualStim):
         if nVerts>2: #draw a filled polygon first
             if self.fillRGB!=None:
                 #convert according to colorSpace
-                if self.fillColorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+                if self.fillColorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
                     fillRGB = (self.fillRGB+1)/2.0#RGB in range 0:1 and scaled for contrast
                 else:fillRGB = self.fillRGB/255.0
                 #then draw
@@ -4641,7 +4725,7 @@ class ShapeStim(_BaseVisualStim):
                 GL.glDrawArrays(GL.GL_POLYGON, 0, nVerts)
         if self.lineRGB!=None:
                 #convert according to colorSpace
-            if self.lineColorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+            if self.lineColorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
                 lineRGB = (self.lineRGB+1)/2.0#RGB in range 0:1 and scaled for contrast
             else:lineRGB = self.lineRGB/255.0
             #then draw
@@ -4716,7 +4800,7 @@ class Circle(Polygon):
 
     (New in version 1.72.00)
     """
-    def __init__(self, win, radius=.5, **kwargs):
+    def __init__(self, win, radius=.5, edges=32, **kwargs):
         """
         Circle accepts all input parameters that `~psychopy.visual.ShapeStim` accept, except for vertices and closeShape.
 
@@ -4734,7 +4818,7 @@ class Circle(Polygon):
                 If radius is a 2-tuple or list, the values will be interpreted as semi-major and
                 semi-minor radii of an ellipse.
         """
-        kwargs['edges'] = 32
+        kwargs['edges'] = edges
         kwargs['radius'] = radius
         Polygon.__init__(self, win, **kwargs)
 
@@ -4842,75 +4926,80 @@ class Line(ShapeStim):
 
 class BufferImageStim(PatchStim):
     """
-    Obtain a "screen-shot" (fullscreen, or region) from a buffer, save to a PatchStim()-like RBGA image.
-    Why? to speed up the rendering of one or more slow visual elements.
+    Take a "screen-shot" (full or partial), save to a PatchStim()-like RBGA object.
+    
+    The class returns a screen-shot, i.e., a single collage image composed of static
+    elements, ones that you want to treat as effectively a single stimulus. The
+    screen-shot can be of the visible screen (front buffer) or hidden (back buffer).
+    
+    BufferImageStim aims to provide fast rendering, while still allowing dynamic
+    orientation, position, and opacity. Its fast to draw but slow to init: ~75ms for
+    a 1024 x 512 capture; init time is proportional to image size (as for PatchStim).
+    There is no support for dynamic depth or color. 
 
-    You first make a "collage" image from your static elements, ones that you could treat
-    as a being single stim. BufferImageStim optimizes it for speed of rendering in a loop.
-    I get ~0.11ms per .draw() on my hardware, regardless of size. But its slow to init:
-    ~75ms for a 1024 x 512 capture, in proportion to image size. There is no support for
-    depth, opacity, or color. The idea is to capture
-    static parts of a display at init() to speed up rendering them.
-
-    You specify the part of the screen to capture (in norm units currently), and optionally
-    the stimuli themselves (as a list of items to be drawn). You
-    get a screenshot of those pixels. If your OpenGL does not support arbitrary sizes,
-    the image will be larger, using square powers of two if needed or requested,
-    with the excess image being invisible (using alpha). The aim is to preserve buffer
-    contents as rendered, and not "improve" upon them, e.g., through interpolation.
-    Conceptually, taking a screenshot records whatever has been drawn to the buffer.
+    You specify the part of the screen to capture (in norm units), and optionally
+    the stimuli themselves (as a list of items to be drawn). You get a screenshot 
+    of those pixels. If your OpenGL does not support arbitrary sizes, the image 
+    will be larger, using square powers of two if needed, with the excess image 
+    being invisible (using alpha). The aim is to preserve the buffer contents as
+    rendered.
 
     Checks for OpenGL 2.1+, or uses square-power-of-2 images.
 
-    Status: seems to work on Mac, but:
-        - Screen units are not properly sorted out, better if allowed pix as well as norm
-        - Only rudimentary testing on pygame; none on Windows, Linux, FreeBSD
+    Status: seems to work on Mac, but limitations:
+        - Screen units are not properly sorted out, better to allow pix too
+        - Rudimentary testing on pygame; none on Windows, Linux, FreeBSD
 
     **Example**::
 
-        # build up a composite or large visual background (slow, do once):
-        mySimpleImageStim.draw()
-        myTextStim.draw()
-        ...
-        # capture everything (one time):
-        screenshot = visual.BufferImageStim(myWin)
-        ...
-        # render to screen (fast, do many times):
+        # define lots of stimuli, make a list:
+        mySimpleImageStim = ...
+        myTextStim = ...
+        stimList = [mySimpleImageStim, myTextStim]
+        
+        # draw stim list items & capture everything (slow):
+        screenshot = visual.BufferImageStim(myWin, stim=stimList)
+        
+        # render to screen (fast):
         while <conditions>:
-            screenshot.draw()  # fast; can change orientation (.ori) or x,y location (._position)
-            animation.draw()   # dynamic
+            screenshot.draw()  # fast; can vary .ori, ._position, .opacity
+            other_stuff.draw() # dynamic
             myWin.flip()
 
-    See coder Demos>stimuli>bufferImageStim.py for a demo.
+    See coder Demos > stimuli > bufferImageStim.py for a demo.
 
     :Author:
         - 2010 Jeremy Gray
     """
     def __init__(self, win, buffer='back', rect=(-1, 1, 1, -1), sqPower2=False,
-        stim=[], interpolate=True, name='', autoLog=True):
+        stim=(), interpolate=True, vertMirror=False, name='', autoLog=True):
         """
         :Parameters:
 
             win :
                 A :class:`~psychopy.visual.Window` object (required)
             buffer :
-                screen buffer to capture from, default is 'back' (hidden), 'front' (in view after win.flip() )
+                the screen buffer to capture from, default is 'back' (hidden).
+                'front' is the buffer in view after win.flip()
             rect :
-                a list of [left, top, right, bottom] coordinates of a rectangle to capture from the screen.
-                currently, these should be given in norm units.
+                a list of edges [left, top, right, bottom] defining a screen rectangle
+                which is the area to capture from the screen, given in norm units.
                 default is fullscreen: [-1, 1, 1, -1]
             stim :
-                all item(s) in the list will be drawn and recaptured as a single stim.
+                a list of item(s) to be drawn to the buffer in order, then captured.
+                each item needs to have its own .draw() method, and have the same
+                window as win
             interpolate :
-                whether to use interpolation (default = True, generally good, especially if you change the orientation)
+                whether to use interpolation (default = True, generally good,
+                especially if you change the orientation)
             sqPower2 :
                 - False (default) = use rect for size if OpenGL = 2.1+
                 - True = use square, power-of-two image sizes
-
+            vertMirror :
+                whether to vertically flip (mirror) the captured image; default = False
             name : string
                 The name of the object to be using during logged messages about this stim
         """
-
         # depends on: window._getRegionOfFrame
 
         if len(list(stim)) > 0: # draw all stim to the back buffer
@@ -4926,6 +5015,9 @@ class BufferImageStim(PatchStim):
                 except AttributeError:
                     logging.warning('BufferImageStim.__init__: "%s" failed to draw' % repr(stimulus))
 
+        self.vertMirror = vertMirror # used in .draw()
+        
+        # take a screenshot of the buffer using win._getRegionOfFrame():
         glversion = pyglet.gl.gl_info.get_version()
         if glversion >= '2.1' and not sqPower2:
             region = win._getRegionOfFrame(buffer=buffer, rect=rect)
@@ -4934,10 +5026,11 @@ class BufferImageStim(PatchStim):
                 logging.debug('BufferImageStim.__init__: defaulting to square power-of-2 sized image (%s)' % glversion )
             region = win._getRegionOfFrame(buffer=buffer, rect=rect, squarePower2=True)
 
+        # turn the RGBA region into a PatchStim()-like object:
         PatchStim.__init__(self, win, tex=region, units='pix', interpolate=interpolate, name=name, autoLog=autoLog)
 
         # to improve drawing speed, move these out of draw:
-        if self.colorSpace in ['rgb','dkl','lms']: #these spaces are 0-centred
+        if self.colorSpace in ['rgb','dkl','lms','hsv']: #these spaces are 0-centred
             self.desiredRGB = (self.rgb * self.contrast + 1) / 2.0 #RGB in range 0:1 and scaled for contrast
             if numpy.any(self.desiredRGB>1.0) or numpy.any(self.desiredRGB<0):
                 logging.warning('Desired color %s (in RGB 0->1 units) falls outside the monitor gamut. Drawing blue instead'%desiredRGB) #AOH
@@ -4948,13 +5041,17 @@ class BufferImageStim(PatchStim):
         self.thisScale = 2.0/numpy.array(self.win.size)
 
     def setTex(self, tex, interpolate=True):
+        # setTex is called only once
         self._texName = tex
         id = self.texID
         pixFormat = GL.GL_RGB
         useShaders = self._useShaders
         self.interpolate = interpolate
 
-        im = tex.transpose(Image.FLIP_TOP_BOTTOM)
+        if self.vertMirror:
+            im = tex # looks backwards, but is correct
+        else:
+            im = tex.transpose(Image.FLIP_TOP_BOTTOM)
         self.origSize=im.size
 
         #im = im.convert("RGBA") # should be RGBA because win._getRegionOfFrame() returns RGBA
@@ -4976,7 +5073,6 @@ class BufferImageStim(PatchStim):
             texture = data.tostring()#serialise
         else:#pyglet on linux needs ctypes instead of string object!?
             texture = data.ctypes#serialise
-        # print data.shape, self.origSize # they are swapped, relative to each other
 
         #bind the texture in openGL
         GL.glEnable(GL.GL_TEXTURE_2D)
@@ -5003,13 +5099,12 @@ class BufferImageStim(PatchStim):
                             data.shape[1], data.shape[0], 0,
                             pixFormat, dataType, texture)
 
-        #GL.glTexEnvi(GL.GL_TEXTURE_ENV, GL.GL_TEXTURE_ENV_MODE, GL.GL_MODULATE)#?? do we need this - think not!
-
     def draw(self):
         """
-        streamlined draw. not sure what happens with shaders & self._updateList()
-        can reduce draw time to ~.13ms if eliminate everything except glScalef and glCallList
+        streamlined version of :class:`~psychopy.visual.PatchStim.draw`. 
+        limitations / bugs: not sure what happens with shaders & self._updateList()
         """
+        # this is copy & pasted from PatchStim, then had stuff taken out for speed
 
         if self.win.winType=='pyglet':
             self.win.winHandle.switch_to()
@@ -5017,20 +5112,18 @@ class BufferImageStim(PatchStim):
         GL.glPushMatrix() # preserve state
         #GL.glLoadIdentity()
 
-        #self.win.setScale(self._winScale) # replaced with:
         GL.glScalef(self.thisScale[0], self.thisScale[1], 1.0)
 
         # enable dynamic position, orientation, opacity; depth not working?
         GL.glTranslatef(self._posRendered[0], self._posRendered[1], 0)
         GL.glRotatef(-self.ori, 0.0, 0.0, 1.0)
         GL.glColor4f(self.desiredRGB[0], self.desiredRGB[1], self.desiredRGB[2], self.opacity)
-        #if self.needUpdate: self._updateList()
 
         GL.glCallList(self._listID) # make it happen
         GL.glPopMatrix() #return the view to previous state
 
 class RatingScale:
-    """A class for getting numeric subjective ratings, e.g., on a 1-to-7 scale.
+    """A class for getting numeric or categorical ratings, e.g., on a 1-to-7 scale.
 
     Returns a re-usable rating-scale object having a .draw() method, with a customizable visual appearance.
     Tries to provide useful default values.
@@ -5081,7 +5174,10 @@ class RatingScale:
         So if you give boolean values and the subject chooses False,
         getResponse() will return False (bool) and not 'False' (str).
 
-    See Coder Demos -> stimuli -> ratingScale.py for examples.
+    See Coder Demos -> stimuli -> ratingScale.py for examples. As another example,
+    fMRI_launchScan.py uses a rating scale for the experimenter to choose between
+    two modes (and not for subjects giving ratings).
+
     The Builder RatingScale component gives a restricted set of options, but also
     allows full control over a RatingScale (via 'customizeEverything').
 
@@ -5764,7 +5860,6 @@ class RatingScale:
         Accounts for non-zero low end, autoRescale, and precision.
         The return value is assured to be on the scale.
         """
-        print 'set tick'
         # on the line:
         value = max(min(self.high, value), self.low)
         # with requested precision:
@@ -6449,7 +6544,7 @@ def createTexture(tex, id, pixFormat, stim, res=128, maskParams=None):
         #scale by rgb and convert to ubyte
         internalFormat = GL.GL_RGB
         dataType = GL.GL_UNSIGNED_BYTE
-        if stim.colorSpace in ['rgb', 'dkl', 'lms']:
+        if stim.colorSpace in ['rgb', 'dkl', 'lms','hsv']:
             rgb=stim.rgb
         else:
             rgb=stim.rgb/127.5-1.0#colour is not a float - convert to float to do the scaling
@@ -6523,7 +6618,9 @@ def _setTexIfNoShaders(obj):
 
 def _setColor(self, color, colorSpace=None, operation='',
                 rgbAttrib='rgb', #or 'fillRGB' etc
-                colorAttrib='color'):#or 'fillColor' etc
+                colorAttrib='color', #or 'fillColor' etc
+                colorSpaceAttrib=None #e.g. 'colorSpace' or 'fillColorSpace'
+                ):
     """Provides the workings needed by setColor, and can perform this for
     any arbitrary color type (e.g. fillColor,lineColor etc)
     """
@@ -6541,18 +6638,21 @@ def _setColor(self, color, colorSpace=None, operation='',
     except:
         isScalar=False
 
+    if colorSpaceAttrib==None:
+        colorSpaceAttrib = colorAttrib+'Space'
+
     if type(color) in [str, unicode, numpy.string_]:
         if color.lower() in colors.colors255.keys():
             #set rgb, color and colorSpace
             setattr(self,rgbAttrib,numpy.array(colors.colors255[color.lower()], float))
-            setattr(self,colorAttrib+'Space','named')#e.g. self.colorSpace='named'
+            setattr(self,colorSpaceAttrib,'named')#e.g. self.colorSpace='named'
             setattr(self,colorAttrib,color) #e.g. self.color='red'
             _setTexIfNoShaders(self)
             return
         elif color[0]=='#' or color[0:2]=='0x':
             setattr(self,rgbAttrib,numpy.array(colors.hex2rgb255(color)))#e.g. self.rgb=[0,0,0]
             setattr(self,colorAttrib,color) #e.g. self.color='#000000'
-            setattr(self,colorAttrib+'Space','hex')#e.g. self.colorSpace='hex'
+            setattr(self,colorSpaceAttrib,'hex')#e.g. self.colorSpace='hex'
             _setTexIfNoShaders(self)
             return
 #                except:
@@ -6568,19 +6668,19 @@ def _setColor(self, color, colorSpace=None, operation='',
     elif color==None:
         setattr(self,rgbAttrib,None)#e.g. self.rgb=[0,0,0]
         setattr(self,colorAttrib,None) #e.g. self.color='#000000'
-        setattr(self,colorAttrib+'Space',None)#e.g. self.colorSpace='hex'
+        setattr(self,colorSpaceAttrib,None)#e.g. self.colorSpace='hex'
         _setTexIfNoShaders(self)
     else:
         raise AttributeError("PsychoPy can't interpret the color %s (type=%s)" %(color, type(color)))
 
     #at this point we have a numpy array of 3 vals (actually we haven't checked that there are 3)
     #check if colorSpace is given and use self.colorSpace if not
-    if colorSpace==None: colorSpace=getattr(self,colorAttrib+'Space')
+    if colorSpace==None: colorSpace=getattr(self,colorSpaceAttrib)
     #check whether combining sensible colorSpaces (e.g. can't add things to hex or named colors)
-    if getattr(self,colorAttrib+'Space') in ['named','hex']:
+    if getattr(self,colorSpaceAttrib) in ['named','hex']:
             raise AttributeError("setColor() cannot combine ('%s') colors within 'named' or 'hex' color spaces"\
                 %(operation))
-    if operation!='' and colorSpace!=getattr(self,colorAttrib+'Space') :
+    if operation!='' and colorSpace!=getattr(self,colorSpaceAttrib) :
             raise AttributeError("setColor cannot combine ('%s') colors from different colorSpaces (%s,%s)"\
                 %(operation, self.colorSpace, colorSpace))
     else:#OK to update current color
@@ -6590,7 +6690,6 @@ def _setColor(self, color, colorSpace=None, operation='',
         if hasattr(self,'dkl_rgb'): win=self #self is probably a Window
         elif hasattr(self, 'win'): win=self.win #self is probably a Stimulus
         else:
-            print hasattr(self,'dkl_rgb'), dir(self)
             win=None
             logging.error("_setColor() is being applied to something that has no known Window object")
     #convert new self.color to rgb space
@@ -6604,8 +6703,10 @@ def _setColor(self, color, colorSpace=None, operation='',
         if numpy.all(win.lms_rgb==numpy.ones([3,3])):lms_rgb=None
         else: lms_rgb=win.lms_rgb
         setattr(self,rgbAttrib, colors.lms2rgb(newColor, lms_rgb) )
+    elif colorSpace=='hsv':
+        setattr(self,rgbAttrib, colors.hsv2rgb(numpy.asarray(newColor).transpose()) )
     else: logging.error('Unknown colorSpace: %s' %colorSpace)
-    setattr(self,colorAttrib+'Space', colorSpace)#store name of colorSpace for future ref and for drawing
+    setattr(self,colorSpaceAttrib, colorSpace)#store name of colorSpace for future ref and for drawing
     #if needed, set the texture too
     _setTexIfNoShaders(self)
 
@@ -6690,7 +6791,6 @@ def getMsPerFrame(myWin, nFrames=60, showVisual=False, msg='', msDelay=0.):
     msdrawAvg = 1000. * float(numpy.average(drawTimes))
     msdrawSD = 1000. * float(numpy.std(drawTimes))
     msfree = 1000. * float(numpy.average(freeTimes))
-    #print "draw=%.1fms free=%.1fms pad=%.1fms" % (msdrawAvg,msfree,msDelay)
 
     return msPFavg, msPFstd, msPFmed #, msdrawAvg, msdrawSD, msfree
 

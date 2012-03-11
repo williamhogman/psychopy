@@ -1,5 +1,5 @@
 # Part of the PsychoPy library
-# Copyright (C) 2011 Jonathan Peirce
+# Copyright (C) 2012 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 from _base import *
@@ -26,7 +26,8 @@ class MouseComponent(BaseComponent):
         self.params={}
         self.order=[]
         self.params['name']=Param(name, valType='code', allowedTypes=[],
-            hint="Even mice need names!")
+            hint="Even mice need names!",
+            label="Name")
         self.params['startType']=Param(startType, valType='str',
             allowedVals=['time (s)', 'frame N', 'condition'],
             hint="How do you want to define your start point?")
@@ -44,14 +45,17 @@ class MouseComponent(BaseComponent):
             hint="(Optional) expected duration (s), purely for representing in the timeline")
         self.params['saveMouseState']=Param(save, valType='str',
             allowedVals=['final','on click', 'every frame', 'never'],
-            hint="How often should the mouse state (x,y,buttons) be stored? On every video frame, every click or just at the end of the Routine?")
+            hint="How often should the mouse state (x,y,buttons) be stored? On every video frame, every click or just at the end of the Routine?",
+            label="Save mouse state")
         self.params['forceEndRoutineOnPress']=Param(forceEndRoutineOnPress, valType='bool', allowedTypes=[],
             updates='constant', allowedUpdates=[],
-            hint="Should a button press force the end of the routine (e.g end the trial)?")
+            hint="Should a button press force the end of the routine (e.g end the trial)?",
+            label="End Routine on press")
         self.params['timeRelativeTo']=Param(timeRelativeTo, valType='str',
             allowedVals=['experiment','routine'],
             updates='constant', allowedUpdates=[],
-            hint="What should the values of mouse.time should be relative to?")
+            hint="What should the values of mouse.time should be relative to?",
+            label="Time relative to")
     def writeInitCode(self,buff):
         buff.writeIndented("%(name)s=event.Mouse(win=win)\n" %(self.params))
         buff.writeIndented("x,y=[None,None]\n" %(self.params))
@@ -80,7 +84,7 @@ class MouseComponent(BaseComponent):
         buff.writeIndented("#*%s* updates\n" %(self.params['name']))
         self.writeStartTestCode(buff)#writes an if statement to determine whether to draw etc
         buff.writeIndented("%(name)s.status=STARTED\n" %(self.params))
-        buff.writeIndented("event.mouseButtons=[0,0,0] #reset mouse buttons to be 'up'")
+        buff.writeIndented("event.mouseButtons=[0,0,0] #reset mouse buttons to be 'up'\n")
         buff.setIndentLevel(-1, relative=True)#to get out of the if statement
         #test for stop (only if there was some setting for duration or stop)
         if self.params['stopVal'].val not in ['', None, -1, 'None']:

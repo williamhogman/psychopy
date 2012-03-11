@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Routines for handling data structures and analysis"""
 # Part of the PsychoPy library
-# Copyright (C) 2011 Jonathan Peirce
+# Copyright (C) 2012 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 from psychopy import misc, gui, logging
@@ -113,7 +113,7 @@ class ExperimentHandler(object):
         """
         if loopHandler in self.loopsUnfinished:
             self.loopsUnfinished.remove(loopHandler)
-    def getAllParamNames(self):
+    def _getAllParamNames(self):
         """Returns the attributes of loop parameters (trialN etc)
         that the current set of loops contain, ready to build a wide-format
         data file.
@@ -165,8 +165,9 @@ class ExperimentHandler(object):
         self.thisEntry[name]=value
 
     def nextEntry(self):
-        """Call this for each entry (e.g. trial) to be stored, but only
-        after all the forms of data have been added to the individual handlers
+        """Calling nextEntry indicates to the ExperimentHandler that the
+        current trial has ended and so further
+        addData() calls correspond to the next trial.
         """
         this=self.thisEntry
         for thisLoop in self.loopsUnfinished:
@@ -183,6 +184,9 @@ class ExperimentHandler(object):
         #create the file or print to stdout
         if appendFile: writeFormat='a'
         else: writeFormat='w' #will overwrite a file
+        if os.path.exists(fileName) and writeFormat == 'w':
+            logging.warning('Data file, %s, will be overwritten' %fileName)
+        
         if fileName=='stdout':
             f = sys.stdout
         elif fileName[-4:] in ['.csv', '.CSV','.dlm','.DLM', '.tsv','.TSV']:
@@ -191,7 +195,7 @@ class ExperimentHandler(object):
             if delim==',': f= codecs.open(fileName+'.csv',writeFormat, encoding = "utf-8")
             else: f=codecs.open(fileName+'.dlm',writeFormat, encoding = "utf-8")
 
-        names = self.getAllParamNames()
+        names = self._getAllParamNames()
         names.extend(self.dataNames)
         #write a header line
         if not matrixOnly:
@@ -208,15 +212,23 @@ class ExperimentHandler(object):
             f.write('\n')
         f.close()
         self.saveWideText=False
-    def saveAsPickle(self,fileName):
+    def saveAsPickle(self,fileName, fileCollisionMethod = 'rename'):
         """Basically just saves a copy of self (with data) to a pickle file.
 
-        This can be reloaded if necess and further analyses carried out.
+        This can be reloaded if necessary and further analyses carried out.
+        
+        :Parameters:
+
+            fileCollisionMethod: Collision method passed to ~psychopy.misc._handleFileCollision
         """
         #otherwise use default location
         if not fileName.endswith('.psydat'):
             fileName+='.psydat'
-        f = open(fileName, "wb")
+        if os.path.exists(fileName):
+            fileName = misc._handleFileCollision(fileName, fileCollisionMethod)
+
+        #create the file or print to stdout
+        f = open(fileName, 'wb')
         cPickle.dump(self, f)
         f.close()
         #no need to save again
@@ -273,10 +285,14 @@ class _BaseTrialHandler:
             exp.loopEnded(self)
         #and halt the loop
         raise StopIteration
-    def saveAsPickle(self,fileName):
+    def saveAsPickle(self,fileName, fileCollisionMethod = 'rename'):
         """Basically just saves a copy of the handler (with data) to a pickle file.
 
-        This can be reloaded if necess and further analyses carried out.
+        This can be reloaded if necessesary and further analyses carried out.
+
+        :Parameters:
+
+            fileCollisionMethod: Collision method passed to ~psychopy.misc._handleFileCollision
         """
         if self.thisTrialN<1 and self.thisRepN<1:#if both are <1 we haven't started
             logging.info('.saveAsPickle() called but no trials completed. Nothing saved')
@@ -284,7 +300,11 @@ class _BaseTrialHandler:
         #otherwise use default location
         if not fileName.endswith('.psydat'):
             fileName+='.psydat'
-        f = open(fileName, "wb")
+        if os.path.exists(fileName):
+            fileName = misc._handleFileCollision(fileName, fileCollisionMethod)
+            
+        #create the file or print to stdout
+        f = open(fileName, 'wb')
         cPickle.dump(self, f)
         f.close()
     def printAsText(self, stimOut=[],
@@ -361,7 +381,7 @@ class TrialHandler(_BaseTrialHandler):
             nReps: number of repeats for all conditions
 
             method: *'random',* 'sequential', or 'fullRandom'
-                'sequential obviously presents the conditions in the order they appear in the list.
+                'sequential' obviously presents the conditions in the order they appear in the list.
                 'random' will result in a shuffle of the conditions on each repeat, but all conditions
                 occur once before the second repeat etc. 'fullRandom' fully randomises the
                 trials across repeats as well, which means you could potentially run all trials of
@@ -1093,13 +1113,17 @@ def importConditions(fileName, returnFieldNames=False):
         if fileName in ['None','none',None]:
             return []
         elif not os.path.isfile(fileName):
-            raise ImportError, 'TrialTypes file not found: %s' %os.path.abspath(fileName)
+            raise ImportError, 'Conditions file not found: %s' %os.path.abspath(fileName)
 
         if fileName.endswith('.csv'):
             #use csv import library to fetch the fieldNames
             f = open(fileName, 'rU')#the U converts line endings to os.linesep (not unicode!)
             #lines = f.read().split(os.linesep)#csv module is temperamental with line endings
-            reader = csv.reader(f)#.split(os.linesep))
+            try:
+                reader = csv.reader(f)#.split(os.linesep))
+            except:
+                raise ImportError, 'Could not open %s as conditions' % fileName
+                return []
             fieldNames = reader.next()
             #use matplotlib to import data and intelligently check for data types
             #all data in one column will be given a single type (e.g. if one cell is string, all will be set to string)
@@ -1125,7 +1149,11 @@ def importConditions(fileName, returnFieldNames=False):
                 trialList.append(thisTrial)
         elif fileName.endswith('.pkl'):
             f = open(fileName, 'rU') # is U needed?
-            trialsArr = cPickle.load(f)
+            try:
+                trialsArr = cPickle.load(f)
+            except:
+                raise ImportError, 'Could not open %s as conditions' % fileName
+                return []
             f.close()
             trialList = []
             fieldNames = trialsArr[0] # header line first
@@ -1143,8 +1171,12 @@ def importConditions(fileName, returnFieldNames=False):
         else:
             if not haveOpenpyxl:
                 raise ImportError, 'openpyxl is required for loading excel format files, but it was not found.'
-                return -1
-            wb = load_workbook(filename = fileName)
+                return []
+            try:
+                wb = load_workbook(filename = fileName)
+            except: # InvalidFileException(unicode(e)): # this fails
+                raise ImportError, 'Could not open %s as conditions' % fileName
+                return []
             ws = wb.worksheets[0]
             nCols = ws.get_highest_column()
             nRows = ws.get_highest_row()

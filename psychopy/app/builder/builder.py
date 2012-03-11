@@ -1,5 +1,5 @@
 # Part of the PsychoPy library
-# Copyright (C) 2011 Jonathan Peirce
+# Copyright (C) 2012 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 import wx
@@ -1267,6 +1267,7 @@ class ParamCtrls:
         by the calling dlg.
 
         e.g.::
+
             param = experiment.Param(val='boo', valType='str')
             ctrls=ParamCtrls(dlg=self, label=fieldName,param=param)
             self.paramCtrls[fieldName] = ctrls #keep track of them in the dlg
@@ -1294,12 +1295,12 @@ class ParamCtrls:
 
         if type(param.val)==numpy.ndarray:
             initial=initial.tolist() #convert numpy arrays to lists
-        labelLength = wx.Size(self.dpi*2,self.dpi/3)#was 8*until v0.91.4
+        labelLength = wx.Size(self.dpi*2,self.dpi*2/3)#was 8*until v0.91.4
         if param.valType == 'code' and label != 'name':
             displayLabel = label+' $'
         else:
             displayLabel = label
-        self.nameCtrl = wx.StaticText(parent,-1,displayLabel,size=labelLength,
+        self.nameCtrl = wx.StaticText(parent,-1,displayLabel,size=None,
                                         style=wx.ALIGN_RIGHT)
 
         if label in ['text', 'customize_everything']:
@@ -1336,6 +1337,8 @@ class ParamCtrls:
             if label in ['allowedKeys', 'image', 'movie', 'scaleDescription', 'sound', 'Begin Routine']:
                 self.valueCtrl.SetFocus()
         self.valueCtrl.SetToolTipString(param.hint)
+        if len(param.allowedVals)==1:
+            self.valueCtrl.Disable()#visible but can't be changed
 
         #create the type control
         if len(param.allowedTypes)==0:
@@ -1499,6 +1502,7 @@ class _BaseParamsDlg(wx.Dialog):
             self.addAdvancedTab()
             for fieldName in self.advParams:
                 self.addParam(fieldName, advanced=True)
+
     def addStartStopCtrls(self,remaining):
         """Add controls for startType, startVal, stopType, stopVal
         remaining refers to
@@ -1511,8 +1515,8 @@ class _BaseParamsDlg(wx.Dialog):
         startTypeParam = self.params['startType']
         startValParam = self.params['startVal']
         #create label
-        label = wx.StaticText(self,-1,'start', style=wx.ALIGN_CENTER)
-        labelEstim = wx.StaticText(self,-1,'expected start (s)', style=wx.ALIGN_CENTER)
+        label = wx.StaticText(self,-1,'Start', style=wx.ALIGN_CENTER)
+        labelEstim = wx.StaticText(self,-1,'Expected start (s)', style=wx.ALIGN_CENTER)
         labelEstim.SetForegroundColour('gray')
         #the method to be used to interpret this start/stop
         self.startTypeCtrl = wx.Choice(parent, choices=startTypeParam.allowedVals)
@@ -1545,8 +1549,8 @@ class _BaseParamsDlg(wx.Dialog):
         stopTypeParam = self.params['stopType']
         stopValParam = self.params['stopVal']
         #create label
-        label = wx.StaticText(self,-1,'stop', style=wx.ALIGN_CENTER)
-        labelEstim = wx.StaticText(self,-1,'expected duration (s)', style=wx.ALIGN_CENTER)
+        label = wx.StaticText(self,-1,'Stop', style=wx.ALIGN_CENTER)
+        labelEstim = wx.StaticText(self,-1,'Expected duration (s)', style=wx.ALIGN_CENTER)
         labelEstim.SetForegroundColour('gray')
         #the method to be used to interpret this start/stop
         self.stopTypeCtrl = wx.Choice(parent, choices=stopTypeParam.allowedVals)
@@ -1588,13 +1592,17 @@ class _BaseParamsDlg(wx.Dialog):
             parent=self
             currRow = self.currRow
         param=self.params[fieldName]
-        ctrls=ParamCtrls(dlg=self, label=fieldName,param=param, advanced=advanced)
+        if param.label not in [None, '']:
+            label=param.label
+        else:
+            label=fieldName
+        ctrls=ParamCtrls(dlg=self, label=label,param=param, advanced=advanced)
         self.paramCtrls[fieldName] = ctrls
         if fieldName=='name':
             ctrls.valueCtrl.Bind(wx.EVT_TEXT, self.checkName)
         # self.valueCtrl = self.typeCtrl = self.updateCtrl
-        sizer.Add(ctrls.nameCtrl, (currRow,0), (1,1),wx.ALIGN_RIGHT )
-        sizer.Add(ctrls.valueCtrl, (currRow,1) , flag=wx.EXPAND)
+        sizer.Add(ctrls.nameCtrl, (currRow,0), (1,1),wx.ALIGN_RIGHT| wx.LEFT|wx.RIGHT,border=5 )
+        sizer.Add(ctrls.valueCtrl, (currRow,1) , flag=wx.EXPAND| wx.LEFT|wx.RIGHT,border=5)
         if ctrls.updateCtrl:
             sizer.Add(ctrls.updateCtrl, (currRow,2))
         if ctrls.typeCtrl:
@@ -1617,7 +1625,6 @@ class _BaseParamsDlg(wx.Dialog):
             #print id, fieldName
         elif fieldName=='Monitor':
             ctrls.valueCtrl.Bind(wx.EVT_RIGHT_DOWN, self.openMonitorCenter)
-
         #increment row number
         if advanced: self.advCurrRow+=1
         else:self.currRow+=1
@@ -2184,6 +2191,7 @@ class DlgLoopProperties(_BaseParamsDlg):
         self.setCtrls(newType)
     def onBrowseTrialsFile(self, event):
         self.conditionsFileOrig = self.conditionsFile
+        self.conditionsOrig = self.conditions
         expFolder,expName = os.path.split(self.frame.filename)
         dlg = wx.FileDialog(self, message="Open file ...", style=wx.OPEN,
                             defaultDir=expFolder)
@@ -2200,11 +2208,16 @@ class DlgLoopProperties(_BaseParamsDlg):
                 self.conditions, self.condNamesInFile = data.importConditions(dlg.GetPath(),
                                                         returnFieldNames=True)
             except ImportError, msg:
-                self.constantsCtrls['conditions'].setValue(
-                    'Badly formed condition name(s) in file:\n'+str(msg).replace(':','\n')+
-                    '.\nNeed to be legal as var name; edit file, try again.')
+                msg = str(msg)
+                if msg.startswith('Could not open'):
+                    self.constantsCtrls['conditions'].setValue(msg)
+                    log.error('Could not open as a conditions file.')
+                else:
+                    self.constantsCtrls['conditions'].setValue(
+                        'Badly formed condition name(s) in file:\n'+msg.replace(':','\n'))
+                    log.error('Rejected bad condition name in conditions file: %s' % msg.split(':')[0])
                 self.conditionsFile = self.conditionsFileOrig
-                self.conditions = ''
+                self.conditions = self.conditionsOrig
                 logging.error('Rejected bad condition name in conditions file: %s' % str(msg).split(':')[0])
                 return
 

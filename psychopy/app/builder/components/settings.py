@@ -9,8 +9,8 @@ class SettingsComponent:
     """This component stores general info about how to run the experiment"""
     def __init__(self, parentName, exp, fullScr=True, winSize=[1024,768], screen=1, monitor='testMonitor', showMouse=False,
                  saveLogFile=True, showExpInfo=True, expInfo="{'participant':'', 'session':'001'}",units='use prefs',
-                 logging='exp', color='$[0,0,0]', colorSpace='rgb',
-                 saveXLSXFile=True, saveCSVFile=False, savePsydatFile=True,
+                 logging='exp', color='$[0,0,0]', colorSpace='rgb', enableEscape=True,
+                 saveXLSXFile=True, saveCSVFile=False, saveWideCSVFile=True, savePsydatFile=True,
                  savedDataFolder=''):
         self.type='Settings'
         self.exp=exp#so we can access the experiment if necess
@@ -20,7 +20,7 @@ class SettingsComponent:
         #params
         self.params={}
         self.order=['Show info dlg','Experiment info',
-            'Save excel file','Save csv file','Save psydat file','Save log file','logging level',
+            'Save excel file','Save csv file','Save wide csv file','Save psydat file','Save log file','logging level',
             'Monitor','Screen', 'Full-screen window','Window size (pixels)',
             'color','colorSpace','Units',]
         self.params['Full-screen window']=Param(fullScr, valType='bool', allowedTypes=[],
@@ -32,7 +32,8 @@ class SettingsComponent:
         self.params['Monitor']=Param(monitor, valType='str', allowedTypes=[],
             hint="Name of the monitor (from Monitor Center). Right-click to go there, then copy & paste a monitor name here.")
         self.params['color']=Param(color, valType='str', allowedTypes=[],
-            hint="Color of the screen (e.g. black, $[1.0,1.0,1.0], $variable. Right-click to bring up a color-picker.)")
+            hint="Color of the screen (e.g. black, $[1.0,1.0,1.0], $variable. Right-click to bring up a color-picker.)",
+            label="Color")
         self.params['colorSpace']=Param(colorSpace, valType='str', allowedVals=['rgb','dkl','lms'],
             hint="Needed if color is defined numerically (see PsychoPy documentation on color spaces)")
         self.params['Units']=Param(units, valType='str', allowedTypes=[],
@@ -42,21 +43,28 @@ class SettingsComponent:
             hint="Should the mouse be visible on screen?")
         self.params['Save log file']=Param(saveLogFile, valType='bool', allowedTypes=[],
             hint="Save a detailed log (more detailed than the excel/csv files) of the entire experiment")
+        self.params['Save wide csv file']=Param(saveWideCSVFile, valType='bool', allowedTypes=[],
+            hint="Save data from loops in comma-separated-value (.csv) format for maximum portability",
+            label="Save csv file (trial-by-trial)")
         self.params['Save csv file']=Param(saveCSVFile, valType='bool', allowedTypes=[],
-            hint="Save data from loops in comma-separated-value (.csv) format for maximum portability")
+            hint="Save data from loops in comma-separated-value (.csv) format for maximum portability",
+            label="Save csv file (summaries)")
         self.params['Save excel file']=Param(saveXLSXFile, valType='bool', allowedTypes=[],
             hint="Save data from loops in Excel (.xlsx) format")
-        self.params['Save psydat file']=Param(savePsydatFile, valType='bool', allowedTypes=[],
+        self.params['Save psydat file']=Param(savePsydatFile, valType='bool', allowedVals=[True],
             hint="Save data from loops in psydat format. This is useful for python programmers to generate analysis scripts.")
         self.params['Saved data folder']=Param(savedDataFolder, valType='code', allowedTypes=[],
             hint="Name of the folder in which to save data and log files (blank defaults to the builder pref)")
         self.params['Show info dlg']=Param(showExpInfo, valType='bool', allowedTypes=[],
             hint="Start the experiment with a dialog to set info (e.g.participant or condition)")
+        self.params['Enable Escape']=Param(enableEscape, valType='bool', allowedTypes=[],
+            hint="Enable the <esc> key, to allow subjects to quit / break out of the experiment")
         self.params['Experiment info']=Param(expInfo, valType='code', allowedTypes=[],
             hint="The info to present in a dialog box. Right-click to check syntax and preview the dialog box.")
         self.params['logging level']=Param(logging, valType='code',
             allowedVals=['error','warning','data','exp','info','debug'],
-            hint="How much output do you want in the log files? ('error' is fewest messages, 'debug' is most)")
+            hint="How much output do you want in the log files? ('error' is fewest messages, 'debug' is most)",
+            label="Logging level")
     def getType(self):
         return self.__class__.__name__
     def getShortType(self):
@@ -83,6 +91,7 @@ class SettingsComponent:
             if not saveToDir:
                 saveToDir = 'data'
 
+
         level=self.params['logging level'].val.upper()
         if self.params['Save log file'].val or self.params['Save csv file'].val or self.params['Save excel file'].val:
             buff.writeIndented("#setup files for saving\n")
@@ -98,10 +107,18 @@ class SettingsComponent:
                 buff.writeIndented("filename='" + saveToDir + "' + os.path.sep + '%s_%s' %(expInfo['Observer'], expInfo['date'])\n")
             else:
                 buff.writeIndented("filename='" + saveToDir + "' + os.path.sep + '%s' %(expInfo['date'])\n")
+
             if self.params['Save log file']:
                 buff.writeIndented("logFile=logging.LogFile(filename+'.log', level=logging.%s)\n" %(level))
-
         buff.writeIndented("logging.console.setLevel(logging.WARNING)#this outputs to the screen, not a file\n")
+
+        #set up the ExperimentHandler
+        buff.writeIndented("\n#an ExperimentHandler isn't essential but helps with data saving\n")
+        buff.writeIndented("thisExp = data.ExperimentHandler(name=expName, version='',\n")
+        buff.writeIndented("    extraInfo=expInfo, runtimeInfo=None,\n")
+        buff.writeIndented("    originPath=%s,\n" %repr(self.exp.expPath))
+        buff.writeIndented("    savePickle=%(Save psydat file)s, saveWideText=%(Save wide csv file)s,\n" %self.params)
+        buff.writeIndented("    dataFileName=filename)\n")
 
         buff.writeIndented("\n#setup the Window\n")
         #get parameters for the Window

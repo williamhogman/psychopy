@@ -6,7 +6,8 @@ There are a number of further resources to help learn/teach about PsychoPy.
 Upcoming events
 --------------------
 
-Maybe VSS 2012?
+:ref:`VSS`
+
 
 .. _lectureMaterials:
 

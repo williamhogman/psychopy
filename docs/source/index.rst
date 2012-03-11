@@ -5,18 +5,22 @@ PsychoPy is an open-source application to allow the presentation of stimuli and 
 News
 ====================
 
-**Latest version**: 1.73.04 was released Feb 2012. See complete :doc:`changelog`
+**Latest version**: 1.73.05 was released March 2012. See complete :doc:`changelog`
 
-**VSS Workshop**: I'm going to run a small-group workshop (probably limit to 30 people) for PsychoPy as a satellite at VSS on the Thursday before the main conference starts.
+Work has now begun on 1.74.00 which wil bring new data file formats, HSV color space and more detailed info about key presses.
 
-    - when: Thurs 10th May, 1-5pm(?)
-    - where: Naples Grand in the Cyber Cafe
-    - cost: $75 (probably)
-    - target audience: novice
-    - material will cover Builder and simple coding
+.. raw:: html
 
-Email me personally (jon at peirce.org.uk) if you're interested in attending.
+    <font color="red">
 
+VSS Workshop
+=================
+
+.. raw:: html
+
+    </font>
+
+We will be running a small-group workshop (probably limit to 30 people) for PsychoPy as a satellite at VSS on the Thursday before the main conference starts. Registration is required. See :ref:`VSS` for further details
 
 .. title:: Home
 

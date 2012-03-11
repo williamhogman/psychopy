@@ -1,5 +1,5 @@
 # Part of the PsychoPy library
-# Copyright (C) 2011 Jonathan Peirce
+# Copyright (C) 2012 Jonathan Peirce
 # Distributed under the terms of the GNU General Public License (GPL).
 
 import StringIO, sys, codecs
@@ -106,10 +106,15 @@ class Experiment:
         """
         self.expPath = expPath
         script = IndentingBuffer(u'') #a string buffer object
+
+        #better to use locale than a specific format string for date:
+        locDateTime = data.getDateStr(format="%B %d, %Y, at %H:%M")
+        locDateTime = codecs.utf_8_decode(locDateTime)[0]
+
         script.write('#!/usr/bin/env python\n' +
                     '# -*- coding: utf-8 -*-\n' +
                     '"""\nThis experiment was created using PsychoPy2 Experiment Builder (v%s), %s\n' % (
-                        self.psychopyVersion, data.getDateStr(format="%B %d, %Y, at %H:%M") ) +
+                        self.psychopyVersion, locDateTime ) +
                     'If you publish work using this script please cite the relevant PsychoPy publications\n' +
                     '  Peirce, JW (2007) PsychoPy - Psychophysics software in Python. Journal of Neuroscience Methods, 162(1-2), 8-13.\n' +
                     '  Peirce, JW (2009) Generating stimuli for neuroscience using PsychoPy. Frontiers in Neuroinformatics, 2:10. doi: 10.3389/neuro.11.010.2008\n"""\n')
@@ -421,7 +426,7 @@ class Param:
     $myPathologicalVa$rName
     """
 
-    def __init__(self, val, valType, allowedVals=[],allowedTypes=[], hint="", updates=None, allowedUpdates=None):
+    def __init__(self, val, valType, allowedVals=[],allowedTypes=[], hint="", label="", updates=None, allowedUpdates=None):
         """
         @param val: the value for this parameter
         @type val: any
@@ -438,6 +443,7 @@ class Param:
         @param allowedUpdates: conceivable updates for this param [None, 'routine', 'set every frame']
         @type allowedUpdates: list
         """
+        self.label=label
         self.val=val
         self.valType=valType
         self.allowedTypes=allowedTypes
@@ -540,7 +546,8 @@ class TrialHandler:
         buff.writeIndented("%(name)s=data.TrialHandler(nReps=%(nReps)s, method=%(loopType)s, \n" %(inits))
         buff.writeIndented("    extraInfo=expInfo, originPath=%s,\n" %repr(self.exp.expPath))
         buff.writeIndented("    trialList=%s,\n" %(condsStr))
-        buff.writeIndented("    seed=%(random seed)s)\n" %(inits))
+        buff.writeIndented("    seed=%(random seed)s, name='%(name)s')\n" %(inits))
+        buff.writeIndented("thisExp.addLoop(%(name)s)#add the loop to the experiment\n" %self.params)
         buff.writeIndented("%s=%s.trialList[0]#so we can initialise stimuli with some values\n" %(self.thisName, self.params['name']))
         #create additional names (e.g. rgb=thisTrial.rgb) if user doesn't mind cluttered namespace
         if not self.exp.prefsBuilder['unclutteredNamespace']:
@@ -563,8 +570,8 @@ class TrialHandler:
             buff.writeIndented(buff.oneIndent+"for paramName in %s.keys():\n" %self.thisName)
             buff.writeIndented(buff.oneIndent*2+"exec(paramName+'=%s.'+paramName)\n" %self.thisName)
     def writeLoopEndCode(self,buff):
+        buff.writeIndented("thisExp.nextEntry()\n\n")
         buff.setIndentLevel(-1, relative=True)
-        buff.writeIndented("\n")
         buff.writeIndented("#completed %s repeats of '%s'\n" \
             %(self.params['nReps'], self.params['name']))
         buff.writeIndented("\n")
@@ -583,7 +590,7 @@ class TrialHandler:
         if saveExcel or savePsydat or saveCSV:
             buff.writeIndented("#save data for this loop\n")
         if savePsydat:
-            buff.writeIndented("%(name)s.saveAsPickle(filename+'%(name)s')\n" %self.params)
+            buff.writeIndented("%(name)s.saveAsPickle(filename+'%(name)s', fileCollisionMethod='rename')\n" %self.params)
         if saveExcel:
             buff.writeIndented("%(name)s.saveAsExcel(filename+'.xlsx', sheetName='%(name)s',\n" %self.params)
             buff.writeIndented("    stimOut=params,\n")
@@ -651,7 +658,8 @@ class StairHandler:
         buff.writeIndented("    stepSizes=%(step sizes)s, stepType=%(step type)s,\n" %self.params)
         buff.writeIndented("    nReversals=%(N reversals)s, nTrials=%(nReps)s, \n" %self.params)
         buff.writeIndented("    nUp=%(N up)s, nDown=%(N down)s,\n" %self.params)
-        buff.writeIndented("    originPath=%s)\n" %repr(self.exp.expPath))
+        buff.writeIndented("    originPath=%s, name='%(name)s')\n" %repr(self.exp.expPath))
+        buff.writeIndented("thisExp.addLoop(%(name)s)#add the loop to the experiment" %self.params)
         buff.writeIndented("level=%s=%s#initialise some vals\n" %(self.thisName, self.params['start value']))
         ##then run the trials
         #work out a name for e.g. thisTrial in trials:
@@ -661,8 +669,8 @@ class StairHandler:
         buff.writeIndented("currentLoop = %s\n" %(self.params['name']))
         buff.writeIndented("level=%s\n" %(self.thisName))
     def writeLoopEndCode(self,buff):
+        buff.writeIndented("thisExp.nextEntry()\n\n")
         buff.setIndentLevel(-1, relative=True)
-        buff.writeIndented("\n")
         buff.writeIndented("#staircase completed\n")
         buff.writeIndented("\n")
         #save data
@@ -719,7 +727,8 @@ class MultiStairHandler:
         buff.writeIndented("%(name)s=data.MultiStairHandler(startVal=%(start value)s, extraInfo=expInfo,\n" %(self.params))
         buff.writeIndented("    nTrials=%(nReps)s,\n" %self.params)
         buff.writeIndented("    conditions=conditions,\n")
-        buff.writeIndented("    originPath=%s)\n" %repr(self.exp.expPath))
+        buff.writeIndented("    originPath=%s, name='%(name)s')\n" %repr(self.exp.expPath))
+        buff.writeIndented("thisExp.addLoop(%(name)s)#add the loop to the experiment" %self.params)
         buff.writeIndented("#initialise values for first condition\n" %repr(self.exp.expPath))
         buff.writeIndented("level=%s._nextIntensity#initialise some vals\n" %(self.thisName))
         buff.writeIndented("condition=%s.currentStaircase.condition\n" %(self.thisName))
@@ -730,8 +739,8 @@ class MultiStairHandler:
         buff.setIndentLevel(1, relative=True)
         buff.writeIndented("currentLoop = %s\n" %(self.params['name']))
     def writeLoopEndCode(self,buff):
+        buff.writeIndented("thisExp.nextEntry()\n\n")
         buff.setIndentLevel(-1, relative=True)
-        buff.writeIndented("\n")
         buff.writeIndented("#all staircases completed\n")
         buff.writeIndented("\n")
         #save data
@@ -920,10 +929,12 @@ class Routine(list):
         buff.writeIndentedLines('    if hasattr(thisComponent,"status") and thisComponent.status!=FINISHED:\n')
         buff.writeIndentedLines('        continueRoutine=True; break#at least one component has not yet finished\n')
 
+        #allow subject to quit via Esc key?
+        if self.exp.settings.params['Enable Escape'].val:
+            buff.writeIndentedLines('\n#check for quit (the [Esc] key)')
+            buff.writeIndentedLines('if event.getKeys(["escape"]):\n    core.quit()')
         #update screen
-        buff.writeIndentedLines('\n#check for quit (the [Esc] key)\n')
-        buff.writeIndented('if event.getKeys(["escape"]): core.quit()\n')
-        buff.writeIndented('#refresh the screen\n')
+        buff.writeIndentedLines('\n#refresh the screen\n')
         buff.writeIndented("if continueRoutine:#don't flip if this routine is over or we'll get a blank screen\n")
         buff.writeIndented('    win.flip()\n')
 
