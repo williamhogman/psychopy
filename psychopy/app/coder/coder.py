@@ -1177,6 +1177,7 @@ class CoderFrame(wx.Frame):
             else:
                 from wx import py
                 self.shell = py.shell.Shell(self.shelf, -1, introText='PyShell in PsychoPy - type some commands!\n\n')
+                self.shell.push("from psychopy import visual,core;",silent=True)
             self.shelf.AddPage(self.shell, 'Shell')
 
         #add help window
