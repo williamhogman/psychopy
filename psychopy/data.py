@@ -140,6 +140,21 @@ class ExperimentHandler(object):
                 names.append(attrName)
                 vals.append(getattr(loop,attr))
         return names, vals
+
+    def addDict(self, values):
+        """Adds multiple data-fields, specified by a dictionary
+        
+        e.g.::
+
+            # add a bunch of data
+            exp.addDict({"response": "1","rt": 0.5})
+            # and then move on to the next trial
+            exp.nextEntry() 
+             
+        """
+        for kv in values.iteritems():
+            self.addData(*kv)
+
     def addData(self, name, value):
         """Add the data with a given name to the current experiment.
 
