@@ -91,7 +91,7 @@ def findPhotometer(ports=None, device=None):
                 if hasattr(photom,'setMaxAttempts'):photom.setMaxAttempts(10)
                 return photom#we found one so stop looking
             else:
-                if photom.com and photom.com.isOpen: 
+                if photom.com and photom.com.isOpen(): 
                     logging.info('closing port')
                     photom.com.close()
 
