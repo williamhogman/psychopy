@@ -47,6 +47,27 @@ def getSerialPorts():
     # need to.
     return chain.from_iterable(imap(glob.iglob,ports))
 
+def toPortName(obj):
+    """Creates a proper path name from a numeric value or a string"""
+
+    # a numeric string can _never_ be a valid port so we assume the user meant int
+    # fyi "1234".isdigit() -> True 
+    if isinstance(obj,basestring) and obj.isdigit():
+        obj = int(obj)
+    
+    if type(obj) in [int,float]:
+        if sys.platform == "win32":
+            return "COM{0}".format(obj)
+        else:
+            # If we are on a unix like operating take a wild guess
+            return "/dev/ttyS{0}".format(obj)
+        
+    if isinstance(obj,basestring):
+        return obj # Looks like we already have a proper path
+    
+    
+    return obj
+
 def getAllPhotometers():
     """Gets all available photometers. 
     The returned photometers may vary depending on which drivers are installed.
