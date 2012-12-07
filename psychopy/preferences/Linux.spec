@@ -79,19 +79,21 @@
     # if False will create scripts with an 'easier' but more cluttered namespace
     unclutteredNamespace = boolean(default=False)
     # folder names for custom components; expects a comma-separated list
-    componentsFolders = list(default=list('/Users/Shared/PsychoPy2/components'))
+    componentsFolders = list(default=list('/usr/share/pyshared/psychopy/app/builder/components'))
     # a list of components to hide (eg, because you never use them)
-    hiddenComponents = list(default=list())
+    hiddenComponents = list(default=list('PatchComponent'))
     # where the Builder demos are located on this computer (after unpacking)
     unpackedDemosDir = string(default='')
     # name of the folder where subject data should be saved (relative to the script)
     savedDataFolder = string(default='data')
     # Panels arrangement: topFlow = Flow on top, Components on left
     topFlow = boolean(default=False)
+    alwaysShowReadme = boolean(default=True)
+    maxFavorites = integer(default=10)
 
 # Settings for connections
 [connections]
-    # the http proxy for usage stats and auto-updating; format is 000.000.000.000:0000
+    # the http proxy for usage stats and auto-updating; format is host:port
     proxy = string(default="")
     # override the above proxy settings with values found in the environment (if possible)
     autoProxy = boolean(default=True)
@@ -99,6 +101,8 @@
     allowUsageStats = boolean(default=True)
     # allow PsychoPy to check for new features and bug fixes
     checkForUpdates = boolean(default=True)
+    # max time to wait for a connection response
+    timeout = float(default=20)
 
 # KeyBindings; new key bindings only take effect on restart; Ctrl not available on Mac (use Cmd)
 [keyBindings]
@@ -110,6 +114,8 @@
     save = string(default='Ctrl+S')
     # save a Builder or Coder file under a new name
     saveAs = string(default='Ctrl+Shift+S')
+    # Coder: print the file
+    print = string(default='Ctrl+P')
     # close the Builder or Coder window
     close = string(default='Ctrl+W')
     # end the application (PsychoPy)
@@ -179,3 +185,5 @@
     largerRoutine = string(default='Ctrl++') # good in ubuntu virtual machine (on mac book pro...)
     # decrease display size of Routines
     smallerRoutine = string(default='Ctrl+_')
+    #show or hide the readme (info) for this experiment if possible
+    toggleReadme = string(default='Ctrl+I')

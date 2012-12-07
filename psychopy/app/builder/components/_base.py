@@ -5,9 +5,12 @@
 import wx, copy
 from os import path
 from psychopy.app.builder.experiment import Param
+from psychopy.constants import *
 
-class BaseComponent:
+class BaseComponent(object):
     """A template for components, defining the methods to be overridden"""
+    #override the categories property below
+    categories = ['Custom']#an attribute of the class, determines the section in the components panel
     def __init__(self, exp, parentName, name=''):
         self.type='Base'
         self.exp=exp#so we can access the experiment if necess
@@ -53,41 +56,43 @@ class BaseComponent:
         if self.params['duration'].val=='':
             buff.writeIndented("if (%(startTime)s <= t):\n" %(self.params))
         else:
-            buff.writeIndented("if (%(startTime)s <= t < (%(startTime)s+%(duration)s)):\n" %(self.params))
+            buff.writeIndented("if (%(startTime)s <= t < (%(startTime)s + %(duration)s)):\n" %(self.params))
     def writeStartTestCode(self,buff):
         """Test whether we need to start
         """
         if self.params['startType'].val=='time (s)':
-            buff.writeIndented("if t>=%(startVal)s and %(name)s.status==NOT_STARTED:\n" %(self.params))
+            if not self.params['startVal'].val.strip():
+                self.params['startVal'].val = '0.0'
+            buff.writeIndented("if t >= %(startVal)s and %(name)s.status == NOT_STARTED:\n" %(self.params))
         elif self.params['startType'].val=='frame N':
-            buff.writeIndented("if frameN>=%(startVal)s and %(name)s.status==NOT_STARTED:\n" %(self.params))
+            buff.writeIndented("if frameN >= %(startVal)s and %(name)s.status == NOT_STARTED:\n" %(self.params))
         elif self.params['startType'].val=='condition':
-            buff.writeIndented("if (%(startVal)s) and %(name)s.status==NOT_STARTED:\n" %(self.params))
+            buff.writeIndented("if (%(startVal)s) and %(name)s.status == NOT_STARTED:\n" %(self.params))
         else:
             raise "Not a known startType (%(startType)s) for %(name)s" %(self.params)
         buff.setIndentLevel(+1,relative=True)
-        buff.writeIndented("#keep track of start time/frame for later\n" %self.params)
-        buff.writeIndented("%(name)s.tStart=t#underestimates by a little under one frame\n" %self.params)
-        buff.writeIndented("%(name)s.frameNStart=frameN#exact frame index\n" %self.params)
+        buff.writeIndented("# keep track of start time/frame for later\n" %self.params)
+        buff.writeIndented("%(name)s.tStart = t  # underestimates by a little under one frame\n" %self.params)
+        buff.writeIndented("%(name)s.frameNStart = frameN  # exact frame index\n" %self.params)
     def writeStopTestCode(self,buff):
         """Test whether we need to stop
         """
         if self.params['stopType'].val=='time (s)':
-            buff.writeIndented("elif %(name)s.status==STARTED and t>=%(stopVal)s:\n" %(self.params))
+            buff.writeIndented("elif %(name)s.status == STARTED and t >= %(stopVal)s:\n" %(self.params))
         #duration in time (s)
         elif self.params['stopType'].val=='duration (s)' and self.params['startType'].val=='time (s)':
-            buff.writeIndented("elif %(name)s.status==STARTED and t>=(%(startVal)s+%(stopVal)s):\n" %(self.params))
+            buff.writeIndented("elif %(name)s.status == STARTED and t >= (%(startVal)s + %(stopVal)s):\n" %(self.params))
         elif self.params['stopType'].val=='duration (s)':#start at frame and end with duratio (need to use approximate)
-            buff.writeIndented("elif %(name)s.status==STARTED and t>=(%(name)s.tStart+%(stopVal)s):\n" %(self.params))
+            buff.writeIndented("elif %(name)s.status == STARTED and t >= (%(name)s.tStart + %(stopVal)s):\n" %(self.params))
         #duration in frames
         elif self.params['stopType'].val=='duration (frames)':
-            buff.writeIndented("elif %(name)s.status==STARTED and frameN>=(%(name)s.frameNStart+%(stopVal)s):\n" %(self.params))
+            buff.writeIndented("elif %(name)s.status == STARTED and frameN >= (%(name)s.frameNStart + %(stopVal)s):\n" %(self.params))
         #stop frame number
         elif self.params['stopType'].val=='frame N':
-            buff.writeIndented("elif %(name)s.status==STARTED and frameN>=%(stopVal)s:\n" %(self.params))
+            buff.writeIndented("elif %(name)s.status == STARTED and frameN >= %(stopVal)s:\n" %(self.params))
         #end according to a condition
         elif self.params['stopType'].val=='condition':
-            buff.writeIndented("elif %(name)s.status==STARTED and (%(stopVal)s):\n" %(self.params))
+            buff.writeIndented("elif %(name)s.status == STARTED and (%(stopVal)s):\n" %(self.params))
         else:
             raise "Didn't write any stop line for startType=%(startType)s, stopType=%(stopType)s" %(self.params)
         buff.setIndentLevel(+1,relative=True)
@@ -124,6 +129,45 @@ class BaseComponent:
             if thisParam.updates==updateType:
                 return True
         return False
+
+    def getStartAndDuration(self):
+        """Determine the start and duration of the stimulus
+        purely for Routine rendering purposes in the app (does not affect
+        actual drawing during the experiment)
+
+        start, duration, nonSlipSafe = component.getStartAndDuration()
+
+        nonSlipSafe indicates that the component's duration is a known fixed
+        value and can be used in non-slip global clock timing (e.g for fMRI)
+        """
+        if not self.params.has_key('startType'):
+            return None, None, True#this component does not have any start/stop
+        startType=self.params['startType'].val
+        stopType=self.params['stopType'].val
+        #deduce a start time (s) if possible
+        #user has given a time estimate
+        if canBeNumeric(self.params['startEstim'].val):
+            startTime=float(self.params['startEstim'].val)
+        elif startType=='time (s)' and canBeNumeric(self.params['startVal'].val):
+            startTime=float(self.params['startVal'].val)
+        else: startTime=None
+        #if we have an exact
+        if stopType=='time (s)' and canBeNumeric(self.params['stopVal'].val):
+            duration=float(self.params['stopVal'].val)-startTime
+            nonSlipSafe=True
+        elif stopType=='duration (s)' and canBeNumeric(self.params['stopVal'].val):
+            duration=float(self.params['stopVal'].val)
+            nonSlipSafe=True
+        else:
+            nonSlipSafe=False
+            #deduce duration (s) if possible. Duration used because component time icon needs width
+            if canBeNumeric(self.params['durationEstim'].val):
+                duration=float(self.params['durationEstim'].val)
+            elif self.params['stopVal'].val in ['','-1','None']:
+                duration=FOREVER#infinite duration
+            else:
+                duration=None
+        return startTime, duration, nonSlipSafe
     def getPosInRoutine(self):
         """Find the index (position) in the parent Routine (0 for top)
         """
@@ -133,3 +177,13 @@ class BaseComponent:
         return self.__class__.__name__
     def getShortType(self):
         return self.getType().replace('Component','')
+
+def canBeNumeric(inStr):
+    """Determines whether the input can be converted to a float
+    (using a try: float(instr))
+    """
+    try:
+        float(inStr)
+        return True
+    except:
+        return False

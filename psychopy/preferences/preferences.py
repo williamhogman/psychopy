@@ -32,7 +32,10 @@ class Preferences:
                 locale.setlocale(locale.LC_ALL, '')
         else: # handles unset == ''  --> use system default explicitly
             locale.setlocale(locale.LC_ALL, '')
-            logging.info('locale set to system default: ' + '.'.join(locale.getlocale()))
+            if locale.getlocale()==(None,None):
+                logging.info('no locale set')
+            else:
+                logging.info('locale set to system default: ' + '.'.join(locale.getlocale()))
 
         if self.userPrefsCfg['app']['resetPrefs']:
             self.resetPrefs()
@@ -135,6 +138,10 @@ class Preferences:
         cfg = configobj.ConfigObj(self.paths['appDataFile'], encoding='UTF8', configspec=appDataSpec)
         resultOfValidate = cfg.validate(self._validator, copy=True, preserve_errors=True)
         self.restoreBadPrefs(cfg, resultOfValidate)
+        #force favComponent level values to be integers
+        if 'favComponents' in cfg['builder'].keys():
+            for key in cfg['builder']['favComponents']:
+                cfg['builder']['favComponents'][key] = int(cfg['builder']['favComponents'][key])
         return cfg
     def saveAppData(self):
         """Save the various setting to the appropriate files (or discard, in some cases)

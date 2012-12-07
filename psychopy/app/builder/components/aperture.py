@@ -18,13 +18,13 @@ class ApertureComponent(VisualComponent):
     """An event class for using GL stencil to restrict the viewing area to a
     circle or square of a given size and position"""
     def __init__(self, exp, parentName, name='aperture', units='norm',
-                size=[1,1], pos=(0,0),
+                size=1, pos=(0,0),
                 startType='time (s)', startVal=0.0,
                 stopType='duration (s)', stopVal=1.0,
                 startEstim='', durationEstim=''):
         #initialise main parameters
         VisualComponent.__init__(self, exp, parentName, name=name, units=units,
-                    pos=pos,
+                    pos=pos,size=size,
                     startType=startType, startVal=startVal,
                     stopType=stopType, stopVal=stopVal,
                     startEstim=startEstim, durationEstim=durationEstim)
@@ -34,7 +34,8 @@ class ApertureComponent(VisualComponent):
         #params:
         #NB make some adjustments on the params defined by _visual component
         self.order = ['name', 'size', 'pos'] # make sure this is at top
-        self.params['size'].hint = "How big is the aperture?"
+        self.params['size'].hint = "How big is the aperture? (a single number for diameter)"
+        self.params['size'].label="Size"
         self.params['pos'].hint = "Where is the aperture centred?"
         self.params['startVal'].hint = "When does the aperture come into effect?"
         self.params['stopVal'].hint="When does the aperture stop having an effect?"
@@ -45,16 +46,19 @@ class ApertureComponent(VisualComponent):
         del self.params['opacity']
 
     def writeInitCode(self, buff):
-        inits = components.getInitVals(self.params)
+        #do we need units code?
+        if self.params['units'].val=='from exp settings': unitsStr=""
+        else: unitsStr="units=%(units)s, " %self.params
         #do writing of init
-        buff.writeIndented("%(name)s=visual.Aperture(win=win, name='%(name)s',\n" % (inits))
-        buff.writeIndented("    size=%(size)s, pos=%(pos)s, units='pix')\n" % (inits))
-        buff.writeIndented("%(name)s.disable() # is enabled by default\n" %(inits))
+        inits = components.getInitVals(self.params)
+        buff.writeIndented("%(name)s = visual.Aperture(win=win, name='%(name)s',\n" % (inits))
+        buff.writeIndented("    "+unitsStr+"size=%(size)s, pos=%(pos)s)\n" % (inits))
+        buff.writeIndented("%(name)s.disable()  # disable until its actually used\n" %(inits))
     def writeFrameCode(self, buff):
         """Only activate the aperture for the required frames
         """
         buff.writeIndented("\n")
-        buff.writeIndented("#*%s* updates\n" %(self.params['name']))
+        buff.writeIndented("# *%s* updates\n" %(self.params['name']))
         self.writeStartTestCode(buff)#writes an if statement to determine whether to draw etc
         buff.writeIndented("%(name)s.enable()\n" %(self.params))
         buff.setIndentLevel(-1, relative=True)#to get out of the if statement
@@ -63,11 +67,11 @@ class ApertureComponent(VisualComponent):
         buff.setIndentLevel(-1, relative=True)#to get out of the if statement
         #set parameters that need updating every frame
         if self.checkNeedToUpdate('set every frame'):#do any params need updating? (this method inherited from _base)
-            buff.writeIndented("if %(name)s.status==STARTED:#only update if being drawn\n" %(self.params))
+            buff.writeIndented("if %(name)s.status == STARTED:  # only update if being drawn\n" %(self.params))
             buff.setIndentLevel(+1, relative=True)#to enter the if block
             self.writeParamUpdates(buff, 'set every frame')
-            buff.setIndentLevel(+1, relative=True)#to exit the if block
+            buff.setIndentLevel(-1, relative=True)#to exit the if block
 
     def writeRoutineEndCode(self, buff):
-        buff.writeIndented("%(name)s.disable() #just in case it was left enabled\n" % (self.params))
+        buff.writeIndented("%(name)s.disable()  # just in case it was left enabled\n" % (self.params))
 

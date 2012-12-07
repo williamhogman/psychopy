@@ -282,7 +282,8 @@ class Monitor:
     def getGammaGrid(self):
         """Gets the min,max,gamma values for the each gun"""
         if self.currentCalib.has_key('gammaGrid'):
-            grid = self.currentCalib['gammaGrid']
+            # Make sure it's an array, so you can look at the shape
+            grid = numpy.asarray(self.currentCalib['gammaGrid'])
             if grid.shape!=[4,6]:
                 newGrid = numpy.zeros([4,6],'f')*numpy.nan#start as NaN
                 newGrid[:grid.shape[0],:grid.shape[1]]=grid
@@ -555,7 +556,7 @@ class Monitor:
             else:
                 output = gammaInvFun(desiredLums,
                     minLum, maxLumWhite, gammaWhite,eq=linMethod)
-            
+
         else:
             logging.error("Don't know how to linearise with method %i" %linMethod)
             output = desiredLums
@@ -862,9 +863,7 @@ def getLumSeries(lumLevels=8,
             elif autoMode=='semi':
                 print "At DAC value %i" % DACval
                 psychopy.event.waitKeys()
-    print 'origRamp:', myWin.origGammaRamp
-    if myWin.origGammaRamp is not None:
-       myWin.setGammaRamp(myWin.origGammaRamp)
+
     myWin.close() #we're done with the visual stimuli
     if havePhotom: return lumsList
     else: return numpy.array([])

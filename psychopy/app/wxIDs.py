@@ -28,6 +28,7 @@ pasteRoutine=wx.NewId()
 openCoderView = wx.NewId()
 openBuilderView = wx.NewId()
 openShell = wx.NewId()
+toggleReadme = wx.NewId()
 toggleOutput=wx.NewId()
 toggleSourceAsst=wx.NewId()
 toggleIndentGuides=wx.NewId()
@@ -44,6 +45,8 @@ stopFile=wx.NewId()
 monitorCenter=wx.NewId()
 openUpdater=wx.NewId()
 unitTests=wx.NewId()
+benchmarkWizard=wx.NewId()
+filePrint=wx.NewId()
 
 #help menu
 #these should be assigned to the relevant buttons/menu items in the app

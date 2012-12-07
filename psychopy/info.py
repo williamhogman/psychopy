@@ -6,14 +6,19 @@
 
 import sys, os, time, platform
 
-from psychopy import visual# imports for RuntimeInfo()
+from psychopy import visual, logging, core, data, web
 from psychopy.core import shellCall
 from psychopy.platform_specific import rush
 from psychopy import __version__ as psychopyVersion
-from pyglet.gl import gl_info
+from pyglet.gl import *
 import numpy, scipy, matplotlib, pyglet
-try: import ctypes
-except: pass
+try:
+    import ctypes
+    haveCtypes = True
+    DWORD = ctypes.c_ulong  # for getRAM() on win
+    DWORDLONG = ctypes.c_ulonglong
+except ImportError:
+    haveCtypes = False
 import hashlib
 import random
 import wx
@@ -97,7 +102,7 @@ class RunTimeInfo(dict):
             self['psychopyGitHead'] = githash
         
         self._setExperimentInfo(author, version, verbose, randomSeed)
-        self._setSystemUserInfo()
+        self._setSystemInfo() # current user, locale, other software
         self._setCurrentProcessInfo(verbose, userProcsDetailed)
         
         # need a window for frame-timing, and some openGL drivers want a window open
@@ -173,8 +178,8 @@ class RunTimeInfo(dict):
             pass
         
         # when was this run?
-        self['experimentRunTime.epoch'] = time.time() # basis for default random.seed()
-        self['experimentRunTime'] = time.ctime(self['experimentRunTime.epoch'])+' '+time.tzname[time.daylight] # a "right now" time-stamp
+        self['experimentRunTime.epoch'] = core.getTime() # basis for default random.seed()
+        self['experimentRunTime'] = data.getDateStr(format="%Y_%m_%d %H:%M (Year_Month_Day Hour:Min)")
         
         # random.seed -- record the value, and initialize random.seed() if 'set:'
         if randomSeedFlag: 
@@ -194,9 +199,18 @@ class RunTimeInfo(dict):
             self['experimentRandomSeed.string'] = None
             self['experimentRandomSeed.isSet'] = False
             
-    def _setSystemUserInfo(self):
+    def _setSystemInfo(self):
         # machine name
         self['systemHostName'] = platform.node()
+        
+        self['systemMemTotalRAM'], self['systemMemFreeRAM'] = getRAM()
+        
+        # locale information:
+        import locale
+        loc = '.'.join(map(str,locale.getlocale()))  # (None, None) -> str
+        if loc == 'None.None':
+            loc = locale.setlocale(locale.LC_ALL,'')
+        self['systemLocale'] = loc  # == the locale in use, from OS or user-pref
         
         # platform name, etc
         if sys.platform in ['darwin']:
@@ -233,50 +247,86 @@ class RunTimeInfo(dict):
             lastboot += ['[?]'] # put something in the list just in case
             self['systemRebooted'] = lastboot[0].strip()
         
-        # is R available (for stats)?
+        # R (and r2py) for stats:
         try:
             Rver,err = shellCall("R --version",stderr=True)
             Rversion = Rver.splitlines()[0]
-            if Rversion.find('R version') == 0:
+            if Rversion.startswith('R version'):
                 self['systemRavailable'] = Rversion.strip()
-            else: raise
+            try:
+                import rpy2
+                self['systemRpy2'] = rpy2.__version__
+            except:
+                pass
         except:
-            pass #self['systemRavailable'] = False
+            pass
         
-        """try:
-            import rpy2
-            self['systemRpy2'] = rpy2.__version__
-        except:
-            self['systemRpy2'] = False
-        """
-        
+        # encryption / security tools:
         try:
             vers, se = shellCall('openssl version', stderr=True)
             if se:
                 vers = str(vers) + se.replace('\n',' ')[:80]
-            if vers:
-                self['systemSecOpenSSLVersion'] = vers
+            if vers.strip():
+                self['systemSec.OpenSSLVersion'] = vers
         except:
             pass
-        
         try:
             so, se = shellCall('gpg --version', stderr=True)
             if so.find('GnuPG') > -1:
-                self['systemSecGPGVersion'] = so.splitlines()[0]
-                self['systemSecGPGHome'] = ''.join([line.replace('Home:','').lstrip()
+                self['systemSec.GPGVersion'] = so.splitlines()[0]
+                self['systemSec.GPGHome'] = ''.join([line.replace('Home:','').lstrip()
                                                     for line in so.splitlines()
                                                     if line.startswith('Home:')])
         except:
             pass
+        try:
+            import ssl
+            self['systemSec.pythonSSL'] = True
+        except ImportError:
+            self['systemSec.pythonSSL'] = False
         
+        # pyo for sound:
+        try:
+            import pyo
+            self['systemPyoVersion'] = '%i.%i.%i' % pyo.getVersion()
+            try:
+                # requires pyo svn r1024 or higher:
+                inp, out = pyo.pa_get_devices_infos()
+                self['systemPyo.InputDevices'] = inp
+                self['systemPyo.OutputDevices'] = out
+            except AttributeError:
+                pass
+        except ImportError:
+            pass
+        
+        # flac (free lossless audio codec) for google-speech:
+        flacv = ''
+        if sys.platform == 'win32':
+            flacexe = 'C:\\Program Files\\FLAC\\flac.exe'
+            if os.path.exists(flacexe):
+                flacv = core.shellCall(flacexe + ' --version')
+        else:
+            flac, se = core.shellCall('which flac', stderr=True)
+            if not se and flac and not flac.find('Command not found') > -1:
+                flacv = core.shellCall('flac --version')
+        if flacv:
+            self['systemFlacVersion'] = flacv
+        
+        # detect internet access or fail quickly:
+        #web.setupProxy() & web.testProxy(web.proxies)  # can take a long time to fail if there's no connection
+        self['systemHaveInternetAccess'] = web.haveInternetAccess()
+        if not self['systemHaveInternetAccess']:
+            self['systemHaveInternetAccess'] = 'False (proxies not attempted)'
+
     def _setCurrentProcessInfo(self, verbose=False, userProcsDetailed=False):
         # what other processes are currently active for this user?
         profileInfo = ''
         appFlagList = [# flag these apps if active, case-insensitive match:
-            'Firefox','Safari','Explorer','Netscape', 'Opera', # web browsers can burn CPU cycles
-            'BitTorrent', 'iTunes', # but also matches iTunesHelper (add to ignore-list)
-            'mdimport', # can have high CPU
+            'Firefox','Safari','Explorer','Netscape', 'Opera', 'Google Chrome', # web browsers can burn CPU cycles
+            'Dropbox', 'BitTorrent', 'iTunes', # but also matches iTunesHelper (add to ignore-list)
+            'mdimport', 'mdworker', 'mds', # can have high CPU
             'Office', 'KeyNote', 'Pages', 'LaunchCFMApp', # productivity; on mac, MS Office (Word etc) can be launched by 'LaunchCFMApp'
+            'Skype',
             'VirtualBox','VBoxClient', # virtual machine as host or client
             'Parallels', 'Coherence', 'prl_client_app','prl_tools_service',
             'VMware'] # just a guess
@@ -286,29 +336,24 @@ class RunTimeInfo(dict):
         # assess concurrently active processes owner by the current user:
         try:
             # ps = process status, -c to avoid full path (potentially having spaces) & args, -U for user
-            if sys.platform in ['darwin']:
+            if sys.platform not in ['win32']:
                 proc = shellCall("ps -c -U "+os.environ['USER'])
-                cmdStr = 'COMMAND'
-            elif sys.platform in ['linux2']:
-                proc = shellCall("ps -c -U "+os.environ['USER'])
-                cmdStr = 'CMD'
-            elif sys.platform in ['win32']: 
+            else:
                 proc, err = shellCall("tasklist", stderr=True) # "tasklist /m" gives modules as well
                 if err:
-                    print 'tasklist error:', err
-                    raise
-            else: # guess about freebsd based on darwin... 
-                proc,err = shellCall("ps -U "+os.environ['USER'],stderr=True)
-                if err: raise
-                cmdStr = 'COMMAND' # or 'CMD'?
+                    logging.error('tasklist error:', err)
+                    #raise
             systemProcPsu = []
             systemProcPsuFlagged = [] 
             systemUserProcFlaggedPID = []
             procLines = proc.splitlines() 
             headerLine = procLines.pop(0) # column labels
             if sys.platform not in ['win32']:
-                cmd = headerLine.split().index(cmdStr) # columns and column labels can vary across platforms
-                pid = headerLine.split().index('PID')  # process id's extracted in case you want to os.kill() them from psychopy
+                try:
+                    cmd = headerLine.upper().split().index('CMD') # columns and column labels can vary across platforms
+                except ValueError:
+                    cmd = headerLine.upper().split().index('COMMAND') 
+                pid = headerLine.upper().split().index('PID')  # process id's extracted in case you want to os.kill() them from psychopy
             else: # this works for win XP, for output from 'tasklist'
                 procLines.pop(0) # blank
                 procLines.pop(0) # =====
@@ -336,11 +381,19 @@ class RunTimeInfo(dict):
             if verbose:
                 self['systemUserProcCmdPid'] = None
                 self['systemUserProcFlagged'] = None
+        
+        # CPU speed (will depend on system busy-ness)
+        d = numpy.array(numpy.linspace(0., 1., 1000000))
+        t0 = core.getTime()
+        numpy.std(d)
+        t = core.getTime() - t0
+        del d
+        self['systemTimeNumpySD1000000_sec'] = t
     
     def _setWindowInfo(self, win, verbose=False, refreshTest='grating', usingTempWin=True):
         """find and store info about the window: refresh rate, configuration info
         """
-        
+
         if refreshTest in ['grating', True]:
             msPFavg, msPFstd, msPFmd6 = visual.getMsPerFrame(win, nFrames=120, showVisual=bool(refreshTest=='grating'))
             self['windowRefreshTimeAvg_ms'] = msPFavg
@@ -396,7 +449,7 @@ class RunTimeInfo(dict):
         self['pythonScipyVersion'] = scipy.__version__
         self['pythonWxVersion'] = wx.version()
         self['pythonMatplotlibVersion'] = matplotlib.__version__
-        self['pythonPygletVersion'] = pyglet.__version__
+        self['pythonPygletVersion'] = pyglet.version
         try: from pygame import __version__ as pygameVersion
         except: pygameVersion = '(no pygame)'
         self['pythonPygameVersion'] = pygameVersion
@@ -410,11 +463,16 @@ class RunTimeInfo(dict):
         self['openGLVendor'] = gl_info.get_vendor()
         self['openGLRenderingEngine'] = gl_info.get_renderer()
         self['openGLVersion'] = gl_info.get_version()
-        GLextensionsOfInterest=['GL_ARB_multitexture', 'GL_EXT_framebuffer_object','GL_ARB_fragment_program',
-            'GL_ARB_shader_objects','GL_ARB_vertex_shader', 'GL_ARB_texture_non_power_of_two','GL_ARB_texture_float']
+        GLextensionsOfInterest=['GL_ARB_multitexture', 'GL_EXT_framebuffer_object',
+             'GL_ARB_fragment_program', 'GL_ARB_shader_objects','GL_ARB_vertex_shader',
+             'GL_ARB_texture_non_power_of_two','GL_ARB_texture_float', 'GL_STEREO']
     
         for ext in GLextensionsOfInterest:
             self['openGLext.'+ext] = bool(gl_info.have_extension(ext))
+        
+        maxVerts = GLint()
+        glGetIntegerv(GL_MAX_ELEMENTS_VERTICES, maxVerts)
+        self['openGLmaxVerticesInVertexArray'] = maxVerts.value
         
     def __repr__(self):
         """ Return a string that is a legal python (dict), and close to YAML, .ini, and configObj syntax
@@ -554,7 +612,10 @@ def _getHgVersion(file):
         return None
 
 def _getUserNameUID():
-    """Return user name, UID: -1=undefined, 0=assume full root, >499=assume non-root; but its >999 on debian
+    """Return user name, UID.
+    
+    UID values can be used to infer admin-level:
+    -1=undefined, 0=full admin/root, >499=assume non-admin/root (>999 on debian-based)
     
     :Author:
         - 2010 written by Jeremy Gray
@@ -564,18 +625,12 @@ def _getUserNameUID():
     except KeyError:
         user = os.environ['USERNAME']
     uid = '-1' 
-    try:
-        if sys.platform not in ['win32']:
-            uid = core.shellCall('id -u')
-        else:
-            try:
-                uid = '1000'
-                if ctypes.windll.shell32.IsUserAnAdmin():
-                    uid = '0'
-            except:
-                raise
-    except:
-        pass
+    if sys.platform not in ['win32']:
+        uid = shellCall('id -u')
+    else:
+        uid = '1000'
+        if haveCtypes and ctypes.windll.shell32.IsUserAnAdmin():
+            uid = '0'
     return str(user), int(uid)
 
 def _getSha1hexDigest(thing, file=False):
@@ -602,4 +657,66 @@ def _getSha1hexDigest(thing, file=False):
     else:
         digester.update(str(thing))
     return digester.hexdigest()
-        
+
+
+def getRAM():
+    """Return system's physical RAM & available RAM, in M.
+    
+    Slow on Mac and Linux; fast on Windows. psutils is good but another dep."""
+    freeRAM = 'unknown'
+    totalRAM = 'unknown'
+    
+    if sys.platform == 'darwin':
+        so,se = core.shellCall('vm_stat', stderr=True)
+        lines = so.splitlines()
+        pageIndex = lines[0].find('page size of ')
+        if  pageIndex > -1:
+            pagesize = int(lines[0][pageIndex + len('page size of '):].split()[0])
+            free = float(lines[1].split()[-1])
+            freeRAM = int(free * pagesize / 1048576.)  # M
+            pieces = [lines[i].split()[-1] for i in range(1,6)]
+            total = sum(map(float, pieces))
+            totalRAM = int(total * pagesize / 1048576.)  # M
+    elif sys.platform == 'win32':
+        if not haveCtypes:
+            return 'unknown', 'unknown'
+        try:
+            # http://code.activestate.com/recipes/511491/
+            # modified by Sol Simpson for 64-bit systems (also ok for 32-bit)
+            kernel32 = ctypes.windll.kernel32
+            class MEMORYSTATUS(ctypes.Structure):
+                _fields_ = [
+                ('dwLength', DWORD),
+                ('dwMemoryLoad', DWORD),
+                ('dwTotalPhys', DWORDLONG), # ctypes.c_ulonglong for 64-bit
+                ('dwAvailPhys', DWORDLONG),
+                ('dwTotalPageFile', DWORDLONG),
+                ('dwAvailPageFile', DWORDLONG),
+                ('dwTotalVirtual', DWORDLONG),
+                ('dwAvailVirtual', DWORDLONG),
+                ('ullAvailExtendedVirtual', DWORDLONG),
+                ]
+            memoryStatus = MEMORYSTATUS()
+            memoryStatus.dwLength = ctypes.sizeof(MEMORYSTATUS)
+            kernel32.GlobalMemoryStatusEx(ctypes.byref(memoryStatus))
+
+            totalRam = int(memoryStatus.dwTotalPhys / 1048576.) # M
+            freeRam = int(memoryStatus.dwAvailPhys / 1048576.) # M
+        except:
+            pass
+    elif sys.platform.startswith('linux'):
+        try:
+            so,se = core.shellCall('free', stderr=True)
+            lines = so.splitlines()
+            freeRAM = int(int(lines[1].split()[3]) / 1024.)  # M
+            totalRAM = int(int(lines[1].split()[1]) / 1024.)
+        except:
+            pass
+    else: # bsd, works on mac too
+        try:
+            total = core.shellCall('sysctl -n hw.memsize')
+            totalRAM = int(int(total) / 1048576.)
+            # not sure how to get available phys mem
+        except:
+            pass
+    return totalRAM, freeRAM

@@ -10,6 +10,7 @@ import psychoParser
 import introspect, py_compile
 from psychopy.app import stdOutRich, dialogs
 from psychopy import logging
+from wx.html import HtmlEasyPrinting
 
 #advanced prefs (not set in prefs files)
 prefTestSubset = ""
@@ -41,6 +42,34 @@ def fromPickle(filename):
     contents = cPickle.load(f)
     f.close()
     return contents
+
+class Printer(HtmlEasyPrinting):
+    """bare-bones printing, no control over anything
+
+    from http://wiki.wxpython.org/Printing
+    """
+    def __init__(self):
+        HtmlEasyPrinting.__init__(self)
+
+    def GetHtmlText(self, text):
+        "Simple conversion of text."
+
+        text = text.replace('&', '&amp;')
+        text = text.replace('<P>', '&#60;P&#62;')
+        text = text.replace('<BR>', '&#60;BR&#62;')
+        text = text.replace('<HR>', '&#60;HR&#62;')
+        text = text.replace('<p>', '&#60;p&#62;')
+        text = text.replace('<br>', '&#60;br&#62;')
+        text = text.replace('<hr>', '&#60;hr&#62;')
+        text = text.replace('\n\n', '<P>')
+        text = text.replace('\t', '    ')  # tabs -> 4 spaces
+        text = text.replace(' ', '&nbsp;')  # preserve indentation
+        html_text = text.replace('\n', '<BR>')
+        return html_text
+
+    def Print(self, text, doc_name):
+        self.SetHeader(doc_name)
+        self.PrintText('<HR>' + self.GetHtmlText(text), doc_name)
 
 class ScriptThread(threading.Thread):
     """A subclass of threading.Thread, with a kill()
@@ -187,10 +216,19 @@ class UnitTestFrame(wx.Frame):
         self.frameType='unittest'
         self.prefs = self.app.prefs
         self.paths = self.app.prefs.paths
-        self.runpyPath = os.path.join(self.prefs.paths['tests'], 'run.py')
+        #deduce the script for running the tests
+        try:
+            import pytest
+            havePytest=True
+        except:
+            havePytest=False
+        if havePytest:
+            self.runpyPath = os.path.join(self.prefs.paths['tests'], 'run.py')
+        else:
+            self.runpyPath = os.path.join(self.prefs.paths['tests'], 'runPytest.py')#run the standalone version
         if sys.platform != 'win32':
             self.runpyPath = self.runpyPath.replace(' ','\ ')
-
+        #setup the frame
         self.IDs = self.app.IDs
         wx.Frame.__init__(self, parent, ID, title, pos=(450,45)) # to right, so Cancel button is clickable during a long test
         self.scriptProcess=None
@@ -246,9 +284,10 @@ class UnitTestFrame(wx.Frame):
 
         self.chkCoverage=wx.CheckBox(parent=self,label="Coverage Report")
         self.chkCoverage.SetToolTip(wx.ToolTip("Include coverage report (requires coverage module)"))
-        #self.chkCoverage.Bind(wx.EVT_CHECKBOX, self.onChgCoverage)
+        self.chkCoverage.Disable()
         self.chkAllStdOut=wx.CheckBox(parent=self,label="ALL stdout")
         self.chkAllStdOut.SetToolTip(wx.ToolTip("Report all printed output & show any new rms-test images"))
+        self.chkAllStdOut.Disable()
         wx.EVT_IDLE(self, self.onIdle)
         self.SetDefaultItem(self.btnRun)
 
@@ -288,14 +327,14 @@ class UnitTestFrame(wx.Frame):
         self.btnCancel.Enable()
         if sys.platform=='win32':
             testSubset = ' '+testSubset
-            command = '"%s" -u "%s" %s%s%s --with-doctest' %(sys.executable, self.runpyPath,
+            command = '"%s" -u "%s" %s%s%s' %(sys.executable, self.runpyPath,
                 coverage, allStdout, testSubset)# the quotes allow file paths with spaces
             print command
             self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC, self.scriptProcess)
             #self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC| wx.EXEC_NOHIDE, self.scriptProcess)
         else:
             testSubset = ' '+testSubset.replace(' ','\ ')
-            command = '%s -u %s%s%s%s --with-doctest' %(sys.executable, self.runpyPath,
+            command = '%s -u %s%s%s%s' %(sys.executable, self.runpyPath,
                 coverage, allStdout, testSubset)# the quotes would break a unix system command
             self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC| wx.EXEC_MAKE_GROUP_LEADER, self.scriptProcess)
         msg = "\n##### Testing: %s%s%s%s   #####\n\n" % (self.runpyPath, coverage, allStdout, testSubset)
@@ -1076,6 +1115,8 @@ class CoderFrame(wx.Frame):
         if self.appData['winH']==0 or self.appData['winW']==0:#we didn't have the key or the win was minimized/invalid
             self.appData['winH'], self.appData['winW'] =wx.DefaultSize
             self.appData['winX'],self.appData['winY'] =wx.DefaultPosition
+        if self.appData['winY'] < 20:
+            self.appData['winY'] = 20
         wx.Frame.__init__(self, parent, ID, title,
                          (self.appData['winX'], self.appData['winY']),
                          size=(self.appData['winW'],self.appData['winH']))
@@ -1230,12 +1271,14 @@ class CoderFrame(wx.Frame):
         self.fileMenu.AppendSubMenu(self.recentFilesMenu,"Open &Recent")
         self.fileMenu.Append(wx.ID_SAVE,    "&Save\t%s" %self.app.keys['save'])
         self.fileMenu.Append(wx.ID_SAVEAS,  "Save &as...\t%s" %self.app.keys['saveAs'])
+        self.fileMenu.Append(self.IDs.filePrint,  "Print\t%s" %self.app.keys['print'])
         self.fileMenu.Append(wx.ID_CLOSE,   "&Close file\t%s" %self.app.keys['close'])
         wx.EVT_MENU(self, wx.ID_NEW,  self.fileNew)
         wx.EVT_MENU(self, wx.ID_OPEN,  self.fileOpen)
         wx.EVT_MENU(self, wx.ID_SAVE,  self.fileSave)
         wx.EVT_MENU(self, wx.ID_SAVEAS,  self.fileSaveAs)
         wx.EVT_MENU(self, wx.ID_CLOSE,  self.fileClose)
+        wx.EVT_MENU(self, self.IDs.filePrint,  self.filePrint)
         item = self.fileMenu.Append(wx.ID_PREFERENCES, text = "&Preferences")
         self.Bind(wx.EVT_MENU, self.app.showPrefs, item)
         #-------------quit
@@ -1304,6 +1347,9 @@ class CoderFrame(wx.Frame):
         self.toolsMenu.AppendSeparator()
         self.toolsMenu.Append(self.IDs.openUpdater, "PsychoPy updates...", "Update PsychoPy to the latest, or a specific, version")
         wx.EVT_MENU(self, self.IDs.openUpdater,  self.app.openUpdater)
+        self.toolsMenu.Append(self.IDs.benchmarkWizard, "Benchmark wizard", "Check software & hardware, generate report")
+        wx.EVT_MENU(self, self.IDs.benchmarkWizard,  self.app.benchmarkWizard)
+
         if self.appPrefs['debugMode']:
             self.toolsMenu.Append(self.IDs.unitTests, "Unit &testing...\tCtrl-T",
                 "Show dialog to run unit tests")
@@ -1628,6 +1674,12 @@ class CoderFrame(wx.Frame):
         self.Destroy()
         self.app.coder=None
 
+    def filePrint(self, event=None):
+        pr = Printer()
+        docName = self.currentDoc.filename
+        text = open(docName, 'r').read()
+        pr.Print(text, docName)
+
     def fileNew(self, event=None, filepath=""):
         self.setCurrentDoc(filepath)
     def fileReload(self, event, filename=None, checkSave=False):
@@ -1937,8 +1989,9 @@ class CoderFrame(wx.Frame):
             #self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC, self.scriptProcess)
             self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC| wx.EXEC_NOHIDE, self.scriptProcess)
         else:
-            fullPath= fullPath.replace(' ','\ ')
-            command = '%s -u %s' %(sys.executable, fullPath)# the quotes would break a unix system command
+            fullPath = fullPath.replace(' ','\ ')
+            pythonExec = sys.executable.replace(' ','\ ')
+            command = '%s -u %s' %(pythonExec, fullPath)# the quotes would break a unix system command
             self.scriptProcessID = wx.Execute(command, wx.EXEC_ASYNC| wx.EXEC_MAKE_GROUP_LEADER, self.scriptProcess)
         self.toolbar.EnableTool(self.IDs.tbRun,False)
         self.toolbar.EnableTool(self.IDs.tbStop,True)
